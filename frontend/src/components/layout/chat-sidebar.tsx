@@ -14,11 +14,6 @@ import {
   Search,
   PanelLeftClose,
   ChevronDown,
-  BookOpen,
-  Folder,
-  Clock,
-  Puzzle,
-  Terminal,
   MoreHorizontal,
   Database,
   ShieldCheck,
@@ -260,11 +255,13 @@ export function ChatSidebar({
 
       {/* Sidebar Drawer */}
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex w-64 flex-col justify-between bg-[#171717] border-r border-[#262626] text-[#ececec] p-3 transition-transform duration-200 ease-in-out md:static md:translate-x-0 ${
-          isOpen ? "translate-x-0" : "-translate-x-full"
+        className={`fixed inset-y-0 left-0 z-50 flex flex-col justify-between bg-[#171717] text-[#ececec] transition-all duration-300 ease-in-out md:static shrink-0 ${
+          isOpen
+            ? "w-64 p-3 border-r border-[#262626] translate-x-0 opacity-100"
+            : "w-0 p-0 border-r-0 -translate-x-full md:translate-x-0 md:w-0 opacity-0 overflow-hidden pointer-events-none"
         }`}
       >
-        <div className="flex flex-1 flex-col overflow-hidden space-y-3">
+        <div className="flex flex-1 flex-col overflow-hidden space-y-3 min-w-[232px]">
           {/* Top Brand & Controls Header */}
           <div className="flex items-center justify-between px-1 pt-1 shrink-0">
             <button
@@ -326,34 +323,6 @@ export function ChatSidebar({
             <Plus className="h-4 w-4" />
             <span>New chat</span>
           </button>
-
-          {/* Quick Menu Shortcuts */}
-          <div className="space-y-0.5 shrink-0 px-1 border-b border-[#262626] pb-2 text-xs text-zinc-300">
-            <div className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 hover:bg-[#212121] cursor-pointer transition">
-              <BookOpen className="h-3.5 w-3.5 text-zinc-400" />
-              <span>Library</span>
-            </div>
-            <div className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 hover:bg-[#212121] cursor-pointer transition">
-              <Folder className="h-3.5 w-3.5 text-zinc-400" />
-              <span>Projects</span>
-            </div>
-            <div className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 hover:bg-[#212121] cursor-pointer transition">
-              <Clock className="h-3.5 w-3.5 text-zinc-400" />
-              <span>Scheduled</span>
-            </div>
-            <div className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 hover:bg-[#212121] cursor-pointer transition">
-              <Puzzle className="h-3.5 w-3.5 text-zinc-400" />
-              <span>Plugins</span>
-            </div>
-            <div className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 hover:bg-[#212121] cursor-pointer transition">
-              <Terminal className="h-3.5 w-3.5 text-zinc-400" />
-              <span>Codex</span>
-            </div>
-            <div className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 hover:bg-[#212121] cursor-pointer transition">
-              <MoreHorizontal className="h-3.5 w-3.5 text-zinc-400" />
-              <span>More</span>
-            </div>
-          </div>
 
           {/* Scrollable Conversation Lists */}
           <div className="flex-1 overflow-y-auto space-y-4 pr-1 -mr-1">

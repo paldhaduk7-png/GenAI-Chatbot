@@ -25,6 +25,7 @@ export function ChatContainer() {
     errorMessage,
     isSidebarOpen,
     setIsSidebarOpen,
+    toggleSidebar,
     sendMessage,
     handleRetry,
     handleNewChat,
@@ -48,7 +49,7 @@ export function ChatContainer() {
       {/* Navigation & Conversation Sessions Controls */}
       <ChatSidebar
         isOpen={isSidebarOpen}
-        onClose={() => setIsSidebarOpen(false)}
+        onClose={toggleSidebar}
         onNewChat={handleNewChat}
         isLoading={isLoading}
         conversations={safeConversations}
@@ -61,10 +62,12 @@ export function ChatContainer() {
       />
 
       {/* Main Conversation Workspace */}
-      <main className="flex flex-1 flex-col overflow-hidden bg-[#212121]">
+      <main className="flex flex-1 flex-col overflow-hidden bg-[#212121] transition-all duration-300">
         {/* Top Header */}
         <ChatHeader
-          onOpenSidebar={() => setIsSidebarOpen(true)}
+          onToggleSidebar={toggleSidebar}
+          isSidebarOpen={isSidebarOpen}
+          onNewChat={handleNewChat}
           title={currentConversation?.title || "ChatGPT"}
         />
 

@@ -45,8 +45,13 @@ export function useChat() {
   // User-facing error message (sanitized)
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // Mobile sidebar drawer state
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  // Sidebar open/closed state (true by default for desktop)
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+
+  // Toggle sidebar between open and full page view
+  const toggleSidebar = useCallback(() => {
+    setIsSidebarOpen((prev) => !prev);
+  }, []);
 
   // Request token counter to guard against race conditions and stale async overwrites
   const requestIdRef = useRef<number>(0);
@@ -378,6 +383,7 @@ export function useChat() {
     errorMessage,
     isSidebarOpen,
     setIsSidebarOpen,
+    toggleSidebar,
     sendMessage,
     handleRetry,
     handleNewChat,

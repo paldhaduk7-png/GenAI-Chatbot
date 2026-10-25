@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useRef, useEffect } from "react";
-import { Plus, Mic, AudioLines, ArrowUp, Brain, Loader2 } from "lucide-react";
+import { Plus, ArrowUp, Loader2 } from "lucide-react";
 
 interface ChatInputProps {
   input: string;
@@ -86,57 +86,26 @@ export function ChatInput({
           className="max-h-36 min-h-[28px] flex-1 resize-none bg-transparent py-1 text-sm text-white placeholder-zinc-400 outline-none focus:outline-none"
         />
 
-        {/* Right Tools: Think pill, Mic, Audio/Send button */}
+        {/* Right Tools: Send button */}
         <div className="flex items-center gap-1.5 shrink-0">
-          {/* Think Button */}
           <button
-            type="button"
-            className="hidden sm:flex items-center gap-1.5 rounded-full bg-zinc-700/50 hover:bg-zinc-700 px-3 py-1.5 text-xs font-medium text-zinc-300 transition"
-            title="Reasoning mode"
+            type="submit"
+            disabled={!hasContent || isLoading}
+            className={`flex h-8 w-8 items-center justify-center rounded-full transition active:scale-95 ${
+              hasContent
+                ? "bg-white text-black hover:bg-zinc-200 cursor-pointer"
+                : "bg-zinc-700/60 text-zinc-500 cursor-not-allowed"
+            }`}
+            aria-label="Send prompt"
           >
-            <Brain className="h-3.5 w-3.5 text-zinc-300" />
-            <span>Think</span>
+            {isLoading ? (
+              <Loader2 className="h-4 w-4 animate-spin text-zinc-400" />
+            ) : (
+              <ArrowUp className="h-4 w-4 stroke-[2.5]" />
+            )}
           </button>
-
-          {/* Microphone Button */}
-          <button
-            type="button"
-            className="flex h-9 w-9 items-center justify-center rounded-full text-zinc-400 hover:bg-zinc-700/60 hover:text-white transition"
-            title="Voice input"
-          >
-            <Mic className="h-4 w-4" />
-          </button>
-
-          {/* Action / Send Button */}
-          {hasContent ? (
-            <button
-              type="submit"
-              disabled={isLoading}
-              className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-600 text-white hover:bg-blue-500 transition active:scale-95 disabled:opacity-50"
-              aria-label="Send prompt"
-            >
-              {isLoading ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <ArrowUp className="h-4 w-4 stroke-[2.5]" />
-              )}
-            </button>
-          ) : (
-            <button
-              type="button"
-              className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-600 text-white hover:bg-blue-500 transition active:scale-95"
-              title="Voice mode"
-            >
-              <AudioLines className="h-4 w-4" />
-            </button>
-          )}
         </div>
       </form>
-
-      {/* Centered Disclaimer */}
-      <p className="mt-2 text-center text-[11px] text-zinc-500">
-        ChatGPT can make mistakes. Check important info.
-      </p>
     </div>
   );
 }
