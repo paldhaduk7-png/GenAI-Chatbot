@@ -41,8 +41,10 @@ export function ChatContainer() {
     (c) => c.id === currentConversationId
   );
 
+  const hasMessages = messages.length > 0;
+
   return (
-    <div className="flex h-screen w-full overflow-hidden bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 font-sans">
+    <div className="flex h-screen w-full overflow-hidden bg-[#212121] text-[#ececec] font-sans">
       {/* Navigation & Conversation Sessions Controls */}
       <ChatSidebar
         isOpen={isSidebarOpen}
@@ -59,29 +61,67 @@ export function ChatContainer() {
       />
 
       {/* Main Conversation Workspace */}
-      <main className="flex flex-1 flex-col overflow-hidden">
+      <main className="flex flex-1 flex-col overflow-hidden bg-[#212121]">
         {/* Top Header */}
         <ChatHeader
           onOpenSidebar={() => setIsSidebarOpen(true)}
-          title={currentConversation?.title || "AI Conversation"}
+          title={currentConversation?.title || "ChatGPT"}
         />
 
-        {/* Scrollable Message History Area */}
-        <ChatMessages
-          messages={messages}
-          isLoading={isLoading}
-          errorMessage={errorMessage}
-          onRetry={handleRetry}
-          onDismissError={dismissError}
-        />
+        {/* Dynamic View: Centered prompt for New Chat OR Scrollable Feed when chat started */}
+        {!hasMessages ? (
+          /* Empty / New Chat State: Centered 'What's on the agenda today?' & Floating Input (Images 1 & 2) */
+          <div className="flex flex-1 flex-col items-center justify-center px-4 py-8 overflow-y-auto">
+            <div className="w-full max-w-2xl text-center space-y-6">
+              <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-white">
+                What&apos;s on the agenda today?
+              </h1>
 
-        {/* Bottom Message Input */}
-        <ChatInput
-          input={input}
-          isLoading={isLoading}
-          onChangeInput={setInput}
-          onSubmit={sendMessage}
-        />
+              {/* Centered Input Pill */}
+              <ChatInput
+                input={input}
+                isLoading={isLoading}
+                onChangeInput={setInput}
+                onSubmit={sendMessage}
+                isCentered={true}
+              />
+
+              {/* Error banner if first submission failed */}
+              {errorMessage && (
+                <div className="mx-auto max-w-lg rounded-xl border border-red-900/50 bg-red-950/40 p-3 text-xs text-red-200">
+                  <p>{errorMessage}</p>
+                  <button
+                    onClick={dismissError}
+                    className="mt-1 text-red-400 underline hover:text-red-300"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        ) : (
+          /* Active Chat State: Messages Feed + Floating Bottom Input (Image 3) */
+          <div className="flex flex-1 flex-col overflow-hidden">
+            {/* Scrollable Message History Area */}
+            <ChatMessages
+              messages={messages}
+              isLoading={isLoading}
+              errorMessage={errorMessage}
+              onRetry={handleRetry}
+              onDismissError={dismissError}
+            />
+
+            {/* Bottom Message Input */}
+            <ChatInput
+              input={input}
+              isLoading={isLoading}
+              onChangeInput={setInput}
+              onSubmit={sendMessage}
+              isCentered={false}
+            />
+          </div>
+        )}
       </main>
     </div>
   );
