@@ -13,12 +13,12 @@ import {
   Loader2,
   Search,
   PanelLeftClose,
-  ChevronDown,
-  MoreHorizontal,
-  Database,
-  ShieldCheck,
+  ChevronRight,
 } from "lucide-react";
+import Image from "next/image";
 import { Conversation } from "@/types/chat";
+import { useDebounce } from "@/hooks/use-debounce";
+import { DeleteDialog } from "@/components/ui/delete-dialog";
 
 interface ChatSidebarProps {
   isOpen: boolean;
@@ -59,9 +59,13 @@ export function ChatSidebar({
   // Inline rename state
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState("");
-  // Search filter
+  // Deletion dialog state (replaces window.confirm with shadcn-style modal)
+  const [conversationToDelete, setConversationToDelete] = useState<string | null>(null);
+  // Search filter with debouncing (300ms)
   const [isSearching, setIsSearching] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const debouncedSearchQuery = useDebounce(searchQuery, 300);
+  const isDebouncing = searchQuery !== debouncedSearchQuery && searchQuery.trim() !== "";
 
   const startRenaming = (e: React.MouseEvent, conv: Conversation) => {
     e.stopPropagation();
@@ -91,11 +95,13 @@ export function ChatSidebar({
 
   const handleDelete = (e: React.MouseEvent, convId: string) => {
     e.stopPropagation();
-    const confirmed = window.confirm(
-      "Are you sure you want to delete this conversation and all its messages?"
-    );
-    if (confirmed) {
-      onDeleteConversation(convId);
+    setConversationToDelete(convId);
+  };
+
+  const confirmDelete = () => {
+    if (conversationToDelete) {
+      onDeleteConversation(conversationToDelete);
+      setConversationToDelete(null);
     }
   };
 
@@ -106,10 +112,11 @@ export function ChatSidebar({
 
   const safeConversations = Array.isArray(conversations) ? conversations : [];
 
-  // Filter based on search query if active
-  const filteredConversations = searchQuery.trim()
+  // Filter based on debounced search query if active
+  const activeQuery = debouncedSearchQuery.trim().toLowerCase();
+  const filteredConversations = activeQuery
     ? safeConversations.filter((c) =>
-        c.title.toLowerCase().includes(searchQuery.trim().toLowerCase())
+        c.title.toLowerCase().includes(activeQuery)
       )
     : safeConversations;
 
@@ -142,8 +149,8 @@ export function ChatSidebar({
         onClick={() => !isEditing && onSelectConversation(conv.id)}
         className={`group relative flex items-center justify-between rounded-lg px-2.5 py-1.5 text-xs transition cursor-pointer ${
           isActive
-            ? "bg-[#212121] text-white font-medium"
-            : "text-zinc-300 hover:bg-[#212121]/60 hover:text-white"
+            ? "bg-gradient-to-r from-cyan-500/20 via-purple-500/10 to-transparent border-l-2 border-cyan-400 text-white font-medium shadow-[0_0_12px_rgba(0,210,255,0.08)]"
+            : "text-zinc-300 hover:bg-white/5 hover:text-white"
         }`}
       >
         {isEditing ? (
@@ -255,9 +262,9 @@ export function ChatSidebar({
 
       {/* Sidebar Drawer */}
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex flex-col justify-between bg-[#171717] text-[#ececec] transition-all duration-300 ease-in-out md:static shrink-0 ${
+        className={`fixed inset-y-0 left-0 z-50 flex flex-col justify-between bg-[#090b12]/95 backdrop-blur-2xl text-[#ececec] transition-all duration-300 ease-in-out md:static shrink-0 ${
           isOpen
-            ? "w-64 p-3 border-r border-[#262626] translate-x-0 opacity-100"
+            ? "w-64 p-3 border-r border-white/[0.06] translate-x-0 opacity-100"
             : "w-0 p-0 border-r-0 -translate-x-full md:translate-x-0 md:w-0 opacity-0 overflow-hidden pointer-events-none"
         }`}
       >
@@ -265,17 +272,28 @@ export function ChatSidebar({
           {/* Top Brand & Controls Header */}
           <div className="flex items-center justify-between px-1 pt-1 shrink-0">
             <button
-              onClick={onNewChat}
-              className="flex items-center gap-1 text-sm font-semibold text-white hover:opacity-80 transition"
+              onClick={onClose}
+              className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-sm font-semibold text-white hover:bg-white/10 transition cursor-pointer"
+              title="Close sidebar"
+              aria-label="Close sidebar"
             >
-              <span>ChatGPT</span>
-              <ChevronDown className="h-3.5 w-3.5 text-zinc-400" />
+              <span>PD</span>
+              <ChevronRight className="h-3.5 w-3.5 text-zinc-400" />
             </button>
 
             <div className="flex items-center gap-1">
               <button
-                onClick={() => setIsSearching((prev) => !prev)}
-                className="rounded-lg p-1.5 text-zinc-400 hover:bg-[#212121] hover:text-white transition"
+                onClick={() => {
+                  setIsSearching((prev) => {
+                    if (prev) setSearchQuery("");
+                    return !prev;
+                  });
+                }}
+                className={`rounded-lg p-1.5 transition ${
+                  isSearching
+                    ? "bg-white/10 text-white"
+                    : "text-zinc-400 hover:bg-white/5 hover:text-white"
+                }`}
                 title="Search chats"
                 aria-label="Search chats"
               >
@@ -283,7 +301,7 @@ export function ChatSidebar({
               </button>
               <button
                 onClick={onClose}
-                className="rounded-lg p-1.5 text-zinc-400 hover:bg-[#212121] hover:text-white transition"
+                className="rounded-lg p-1.5 text-zinc-400 hover:bg-white/5 hover:text-white transition"
                 title="Close sidebar"
                 aria-label="Close sidebar"
               >
@@ -301,16 +319,22 @@ export function ChatSidebar({
                 placeholder="Search conversations..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full rounded-lg bg-[#212121] border border-zinc-700 px-3 py-1.5 text-xs text-white placeholder-zinc-500 outline-none focus:border-zinc-500"
+                className="w-full rounded-lg bg-[#10131d]/90 border border-white/10 px-3 py-1.5 pr-8 text-xs text-white placeholder-zinc-500 outline-none focus:border-cyan-500/50 transition"
               />
-              {searchQuery && (
-                <button
-                  onClick={() => setSearchQuery("")}
-                  className="absolute right-3 top-2 text-zinc-400 hover:text-white"
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              )}
+              <div className="absolute right-3 top-2 flex items-center gap-1">
+                {isDebouncing && (
+                  <Loader2 className="h-3 w-3 animate-spin text-zinc-400" />
+                )}
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery("")}
+                    className="text-zinc-400 hover:text-white transition"
+                    title="Clear search"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                )}
+              </div>
             </div>
           )}
 
@@ -318,9 +342,9 @@ export function ChatSidebar({
           <button
             onClick={onNewChat}
             disabled={isLoading}
-            className="flex w-full shrink-0 items-center gap-2 rounded-lg bg-[#212121] px-3 py-2 text-xs font-medium text-white transition hover:bg-[#2a2a2a] active:scale-[0.99] disabled:opacity-50"
+            className="flex w-full shrink-0 items-center gap-2 rounded-lg bg-gradient-to-r from-cyan-500/10 via-purple-500/10 to-transparent border border-cyan-500/20 hover:border-cyan-500/40 hover:from-cyan-500/20 px-3 py-2 text-xs font-medium text-white transition shadow-[0_0_15px_rgba(0,210,255,0.06)] active:scale-[0.99] disabled:opacity-50"
           >
-            <Plus className="h-4 w-4" />
+            <Plus className="h-4 w-4 text-cyan-400" />
             <span>New chat</span>
           </button>
 
@@ -380,35 +404,33 @@ export function ChatSidebar({
         </div>
 
         {/* User Profile Footer */}
-        <div className="border-t border-[#262626] pt-2 mt-2 shrink-0">
-          <div className="flex items-center justify-between rounded-lg px-2 py-1.5 hover:bg-[#212121] cursor-pointer transition">
+        <div className="border-t border-white/[0.06] pt-2 mt-2 shrink-0">
+          <div className="flex items-center justify-between rounded-lg px-2 py-1.5 hover:bg-white/5 cursor-pointer transition">
             <div className="flex items-center gap-2.5 min-w-0">
-              <div className="flex h-7 w-7 items-center justify-center rounded-full bg-zinc-700 text-[11px] font-medium text-white shrink-0">
-                PD
-              </div>
+              <Image
+                src="/icon.png"
+                alt="PD"
+                width={28}
+                height={28}
+                className="h-7 w-7 rounded-md object-cover shrink-0 ring-1 ring-cyan-500/30 shadow-[0_0_10px_rgba(0,210,255,0.2)]"
+              />
               <div className="min-w-0 flex-1">
                 <p className="truncate text-xs font-medium text-zinc-200">
                   pal dhaduk
                 </p>
-                <p className="text-[10px] text-zinc-500">Go</p>
+                <p className="text-[10px] text-zinc-400">AI Assistant</p>
               </div>
-            </div>
-            <MoreHorizontal className="h-4 w-4 text-zinc-500 shrink-0" />
-          </div>
-
-          {/* Database & Failover Status */}
-          <div className="flex items-center justify-between px-2 pt-2 text-[10px] text-zinc-500">
-            <div className="flex items-center gap-1">
-              <Database className="h-3 w-3 text-indigo-400" />
-              <span>Neon PostgreSQL</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <ShieldCheck className="h-3 w-3 text-emerald-400" />
-              <span>Mistral &bull; Gemini</span>
             </div>
           </div>
         </div>
       </aside>
+
+      {/* Shadcn-UI style Confirmation Dialog for Deleting Conversations */}
+      <DeleteDialog
+        isOpen={Boolean(conversationToDelete)}
+        onClose={() => setConversationToDelete(null)}
+        onConfirm={confirmDelete}
+      />
     </>
   );
 }

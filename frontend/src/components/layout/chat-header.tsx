@@ -1,7 +1,8 @@
 "use client";
 
 import React from "react";
-import { ChevronDown, Share2, MoreHorizontal, PanelLeft, SquarePen } from "lucide-react";
+import { ChevronDown, Share2 } from "lucide-react";
+import { toast } from "sonner";
 
 interface ChatHeaderProps {
   onToggleSidebar: () => void;
@@ -12,74 +13,63 @@ interface ChatHeaderProps {
 
 /**
  * ChatHeader Component:
- * Matches ChatGPT Classic top navigation:
- * - Sidebar toggle button (collapses/expands sidebar for full-screen view).
- * - "New chat" button when sidebar is collapsed.
- * - "ChatGPT" dropdown / title.
- * - "Share" pill button and options menu on the right.
+ * - When sidebar is closed (!isSidebarOpen): Shows "PD" with down arrow (ChevronDown) to open sidebar.
+ * - When sidebar is open (isSidebarOpen): "PD" is only shown inside the sidebar (with ChevronRight).
+ * - "Share" pill button on the right.
  */
 export function ChatHeader({
   onToggleSidebar,
   isSidebarOpen,
-  onNewChat,
-  title = "ChatGPT",
+  title = "PD",
 }: ChatHeaderProps) {
   const handleShare = () => {
     if (navigator.clipboard) {
       navigator.clipboard.writeText(window.location.href);
-      alert("Conversation link copied to clipboard!");
+      toast.success("Conversation link copied to clipboard!");
+    } else {
+      toast.error("Clipboard access not available.");
     }
   };
 
-  return (
-    <header className="flex h-12 items-center justify-between bg-[#212121] px-3 sm:px-4 text-[#ececec] shrink-0 border-b border-[#2d2d2d]/60">
-      <div className="flex items-center gap-1.5 min-w-0">
-        {/* Sidebar Toggle Button (Click to collapse into full page or open sidebar) */}
-        <button
-          onClick={onToggleSidebar}
-          className="rounded-lg p-1.5 text-zinc-400 hover:bg-zinc-800 hover:text-white transition shrink-0"
-          title={isSidebarOpen ? "Close sidebar" : "Open sidebar"}
-          aria-label="Toggle sidebar"
-        >
-          <PanelLeft className="h-4 w-4" />
-        </button>
+  const hasCustomTitle = Boolean(
+    title && title !== "PD" && title !== "AI Conversation"
+  );
 
-        {/* Quick New Chat Button when sidebar is closed */}
-        {!isSidebarOpen && onNewChat && (
+  return (
+    <header className="flex h-12 items-center justify-between bg-[#07080d]/75 backdrop-blur-xl px-3 sm:px-4 text-[#ececec] shrink-0 border-b border-white/[0.06] z-20">
+      <div className="flex items-center gap-1.5 min-w-0">
+        {/* Only show PD button in header when sidebar is closed */}
+        {!isSidebarOpen && (
           <button
-            onClick={onNewChat}
-            className="rounded-lg p-1.5 text-zinc-400 hover:bg-zinc-800 hover:text-white transition shrink-0"
-            title="New chat"
-            aria-label="New chat"
+            onClick={onToggleSidebar}
+            className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-sm font-semibold text-zinc-200 hover:bg-white/10 hover:text-white transition cursor-pointer"
+            title="Open sidebar"
+            aria-label="Open sidebar"
           >
-            <SquarePen className="h-4 w-4" />
+            <span className="truncate max-w-[200px] sm:max-w-[400px]">
+              {hasCustomTitle ? title : "PD"}
+            </span>
+            <ChevronDown className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
           </button>
         )}
 
-        {/* ChatGPT Title / Model Dropdown */}
-        <button className="flex items-center gap-1 text-sm font-semibold text-zinc-200 hover:text-white transition ml-1">
-          <span className="truncate max-w-[200px] sm:max-w-[400px]">
-            {title && title !== "AI Conversation" ? title : "ChatGPT"}
+        {/* When sidebar is open and there is an active conversation title, show the title text only */}
+        {isSidebarOpen && hasCustomTitle && (
+          <span className="truncate max-w-[200px] sm:max-w-[400px] text-sm font-semibold text-zinc-200 px-2 py-1">
+            {title}
           </span>
-          <ChevronDown className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
-        </button>
+        )}
       </div>
 
-      {/* Right Actions: Share & Options */}
+      {/* Right Actions: Share */}
       <div className="flex items-center gap-2 shrink-0">
         <button
           onClick={handleShare}
-          className="flex items-center gap-1.5 rounded-full border border-zinc-700 bg-transparent px-3 py-1 text-xs font-medium text-zinc-300 hover:bg-zinc-800 hover:text-white transition"
+          className="flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-medium text-zinc-300 hover:bg-white/10 hover:border-cyan-500/40 hover:text-white transition cursor-pointer shadow-[0_0_12px_rgba(0,210,255,0.06)]"
+          title="Share conversation"
         >
-          <Share2 className="h-3.5 w-3.5" />
+          <Share2 className="h-3.5 w-3.5 text-cyan-400" />
           <span>Share</span>
-        </button>
-
-        <button
-          className="rounded-full p-1.5 text-zinc-400 hover:bg-zinc-800 hover:text-white transition"
-          title="More options"
-        >
-          <MoreHorizontal className="h-4 w-4" />
         </button>
       </div>
     </header>
