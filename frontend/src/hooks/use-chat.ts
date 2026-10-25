@@ -171,6 +171,16 @@ export function useChat() {
    */
   const togglePin = useCallback(
     async (conversationId: string) => {
+      // Find the target conversation
+      const target = conversations.find((c) => c.id === conversationId);
+      if (target && !target.pinned) {
+        const pinnedCount = conversations.filter((c) => c.pinned).length;
+        if (pinnedCount >= 7) {
+          setErrorMessage("You can pin up to 7 conversations. Please unpin one first.");
+          return;
+        }
+      }
+
       try {
         // Optimistically update pinned state
         setConversations((prev) =>
@@ -186,11 +196,13 @@ export function useChat() {
         loadConversations();
       } catch (err: unknown) {
         console.error("Failed to toggle pin:", err);
-        setErrorMessage("Failed to update pinned status.");
+        const errorWithResponse = err as { response?: { data?: { detail?: string } } };
+        const detail = errorWithResponse?.response?.data?.detail || "Failed to update pinned status.";
+        setErrorMessage(detail);
         loadConversations();
       }
     },
-    [loadConversations]
+    [conversations, loadConversations]
   );
 
   /**
