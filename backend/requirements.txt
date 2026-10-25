@@ -1,8 +1,8 @@
-
 fastapi
 uvicorn[standard]
 langchain-core
 langchain-mistralai
 langchain-google-genai
 python-dotenv
-
+sqlalchemy>=2.0.0
+psycopg2-binary>=2.9.9
