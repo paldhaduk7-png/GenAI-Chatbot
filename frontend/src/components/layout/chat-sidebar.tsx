@@ -4,7 +4,6 @@ import React, { useState } from "react";
 import {
   X,
   Plus,
-  MessageSquare,
   Pin,
   PinOff,
   Trash2,
@@ -14,11 +13,15 @@ import {
   Search,
   PanelLeftClose,
   ChevronRight,
+  LogOut,
 } from "lucide-react";
-import Image from "next/image";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import { Conversation } from "@/types/chat";
+import { useAuth } from "@/hooks/use-auth";
 import { useDebounce } from "@/hooks/use-debounce";
 import { DeleteDialog } from "@/components/ui/delete-dialog";
+import { LogoutDialog } from "@/components/ui/logout-dialog";
 
 interface ChatSidebarProps {
   isOpen: boolean;
@@ -66,6 +69,39 @@ export function ChatSidebar({
   const [searchQuery, setSearchQuery] = useState("");
   const debouncedSearchQuery = useDebounce(searchQuery, 300);
   const isDebouncing = searchQuery !== debouncedSearchQuery && searchQuery.trim() !== "";
+
+  // Authentication & Logout state
+  const router = useRouter();
+  const { user, logout } = useAuth();
+  const [showLogoutDialog, setShowLogoutDialog] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+
+  const getInitials = (name?: string | null, email?: string): string => {
+    if (name && name.trim()) {
+      const parts = name.trim().split(/\s+/);
+      if (parts.length >= 2) {
+        return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+      }
+      return parts[0].slice(0, 2).toUpperCase();
+    }
+    if (email && email.trim()) {
+      return email.slice(0, 2).toUpperCase();
+    }
+    return "AI";
+  };
+
+  const handleConfirmLogout = () => {
+    if (isLoggingOut) return;
+    setIsLoggingOut(true);
+    try {
+      logout();
+      toast.success("Signed out successfully.");
+      router.push("/login");
+    } finally {
+      setIsLoggingOut(false);
+      setShowLogoutDialog(false);
+    }
+  };
 
   const startRenaming = (e: React.MouseEvent, conv: Conversation) => {
     e.stopPropagation();
@@ -405,31 +441,49 @@ export function ChatSidebar({
 
         {/* User Profile Footer */}
         <div className="border-t border-white/[0.06] pt-2 mt-2 shrink-0">
-          <div className="flex items-center justify-between rounded-lg px-2 py-1.5 hover:bg-white/5 cursor-pointer transition">
-            <div className="flex items-center gap-2.5 min-w-0">
-              <Image
-                src="/icon.png"
-                alt="PD"
-                width={28}
-                height={28}
-                className="h-7 w-7 rounded-md object-cover shrink-0 ring-1 ring-cyan-500/30 shadow-[0_0_10px_rgba(0,210,255,0.2)]"
-              />
+          <div className="flex items-center justify-between rounded-xl p-1.5 hover:bg-white/[0.04] transition group">
+            <div className="flex items-center gap-2.5 min-w-0 flex-1">
+              {/* User Avatar with Initials Fallback */}
+              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-cyan-500/20 via-blue-500/20 to-purple-600/30 border border-cyan-500/30 text-[11px] font-semibold text-cyan-300 shrink-0 shadow-[0_0_10px_rgba(0,229,255,0.15)]">
+                {getInitials(user?.full_name, user?.email)}
+              </div>
               <div className="min-w-0 flex-1">
-                <p className="truncate text-xs font-medium text-zinc-200">
-                  pal dhaduk
+                <p className="truncate text-xs font-medium text-zinc-100">
+                  {user?.full_name || "Authenticated User"}
                 </p>
-                <p className="text-[10px] text-zinc-400">AI Assistant</p>
+                <p className="truncate text-[10px] text-zinc-400">
+                  {user?.email || "user@example.com"}
+                </p>
               </div>
             </div>
+
+            {/* Logout Action Button */}
+            <button
+              onClick={() => setShowLogoutDialog(true)}
+              disabled={isLoggingOut}
+              className="rounded-lg p-1.5 text-zinc-400 hover:text-red-400 hover:bg-red-500/10 transition cursor-pointer shrink-0"
+              title="Sign out"
+              aria-label="Sign out"
+            >
+              <LogOut className="h-4 w-4" />
+            </button>
           </div>
         </div>
       </aside>
 
-      {/* Shadcn-UI style Confirmation Dialog for Deleting Conversations */}
+      {/* Confirmation Dialog for Deleting Conversations */}
       <DeleteDialog
         isOpen={Boolean(conversationToDelete)}
         onClose={() => setConversationToDelete(null)}
         onConfirm={confirmDelete}
+      />
+
+      {/* Confirmation Dialog for Signing Out */}
+      <LogoutDialog
+        isOpen={showLogoutDialog}
+        onClose={() => setShowLogoutDialog(false)}
+        onConfirm={handleConfirmLogout}
+        isLoggingOut={isLoggingOut}
       />
     </>
   );
