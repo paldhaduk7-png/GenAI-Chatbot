@@ -104,7 +104,9 @@ export function useChat() {
     setMessages([]);
     setInput("");
     setErrorMessage(null);
-    setIsSidebarOpen(false);
+    if (typeof window !== "undefined" && window.innerWidth < 768) {
+      setIsSidebarOpen(false);
+    }
   }, []);
 
   /**
@@ -121,7 +123,9 @@ export function useChat() {
   const selectConversation = useCallback(
     async (conversationId: string) => {
       if (conversationId === currentConversationId && !isLoading) {
-        setIsSidebarOpen(false);
+        if (typeof window !== "undefined" && window.innerWidth < 768) {
+          setIsSidebarOpen(false);
+        }
         return;
       }
 
@@ -129,7 +133,9 @@ export function useChat() {
       setErrorMessage(null);
       setIsLoading(true);
       setCurrentConversationId(conversationId);
-      setIsSidebarOpen(false);
+      if (typeof window !== "undefined" && window.innerWidth < 768) {
+        setIsSidebarOpen(false);
+      }
 
       try {
         const detail = await fetchConversation(conversationId);

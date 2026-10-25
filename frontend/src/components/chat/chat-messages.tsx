@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useRef, useEffect } from "react";
-import { Bot, AlertCircle, RotateCcw, X } from "lucide-react";
+import React, { useRef, useEffect, useCallback } from "react";
+import { AlertCircle, RotateCcw, X } from "lucide-react";
 import { Message } from "@/types/chat";
 import { ChatMessage } from "./chat-message";
 import { TypingIndicator } from "./typing-indicator";
@@ -12,16 +12,16 @@ interface ChatMessagesProps {
   errorMessage: string | null;
   onRetry: () => void;
   onDismissError: () => void;
+  conversationId?: string | null;
 }
 
 /**
  * ChatMessages Component:
  * Renders the scrollable conversation history:
- * - Empty state welcome screen.
- * - Message bubble list.
- * - In-flight AI response loading indicator.
- * - Error banner with retry and dismiss controls.
- * - Auto-scroll to the latest message.
+ * - Smart auto-scroll: Scrolls down on user prompt or when near bottom.
+ * - Respects reading position if user scrolls up.
+ * - Prevents page-level scrollbars using container-level scrollTo.
+ * - Independent vertical scrolling with flex-1 min-h-0.
  */
 export function ChatMessages({
   messages,
@@ -29,17 +29,66 @@ export function ChatMessages({
   errorMessage,
   onRetry,
   onDismissError,
+  conversationId,
 }: ChatMessagesProps) {
-  // Anchor to auto-scroll into view when messages change or loading state toggles
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const isNearBottomRef = useRef<boolean>(true);
+  const prevMessagesLengthRef = useRef<number>(messages.length);
 
+  // Monitor user scroll position to avoid forcing jumps if reading history
+  const handleScroll = useCallback(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const threshold = 150; // pixels from bottom to be considered "at the bottom"
+    const distanceToBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    isNearBottomRef.current = distanceToBottom <= threshold;
+  }, []);
+
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
+    const el = containerRef.current;
+    if (el) {
+      el.scrollTo({
+        top: el.scrollHeight,
+        behavior,
+      });
+    }
+  }, []);
+
+  // Handle messages change or loading state
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, isLoading]);
+    const prevLen = prevMessagesLengthRef.current;
+    const currentLen = messages.length;
+    prevMessagesLengthRef.current = currentLen;
+
+    const lastMsg = currentLen > 0 ? messages[currentLen - 1] : null;
+    const isNewUserMessage = currentLen > prevLen && lastMsg?.role === "user";
+
+    // If user just sent a new message, ALWAYS smoothly scroll to bottom
+    if (isNewUserMessage) {
+      isNearBottomRef.current = true;
+      scrollToBottom("smooth");
+      return;
+    }
+
+    // If assistant reply arrives or loading state changes, only scroll if user was already near bottom
+    if (isNearBottomRef.current) {
+      scrollToBottom("smooth");
+    }
+  }, [messages, isLoading, scrollToBottom]);
+
+  // Initial scroll to bottom on conversation load or switch
+  useEffect(() => {
+    isNearBottomRef.current = true;
+    scrollToBottom("auto");
+  }, [conversationId, scrollToBottom]);
 
   return (
-    <div className="flex-1 overflow-y-auto px-4 py-4 md:px-8">
-      <div className="mx-auto max-w-3xl space-y-4">
+    <div
+      ref={containerRef}
+      onScroll={handleScroll}
+      className="flex-1 min-h-0 min-w-0 w-full overflow-y-auto px-4 py-4 md:px-8 overscroll-contain"
+    >
+      <div className="mx-auto max-w-3xl space-y-5 pb-6">
         {/* Message Bubbles */}
         {messages.map((message) => (
           <ChatMessage key={message.id} message={message} onRetry={onRetry} />
@@ -66,7 +115,7 @@ export function ChatMessages({
                 <button
                   onClick={onRetry}
                   disabled={isLoading}
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-red-900/60 hover:bg-red-800/80 px-2.5 py-1 text-xs font-medium text-white transition active:scale-95 disabled:opacity-50"
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-red-900/60 hover:bg-red-800/80 px-2.5 py-1 text-xs font-medium text-white transition active:scale-95 disabled:opacity-50 cursor-pointer"
                 >
                   <RotateCcw className="h-3 w-3" />
                   <span>Try again</span>
@@ -75,7 +124,7 @@ export function ChatMessages({
               {/* Dismiss error button */}
               <button
                 onClick={onDismissError}
-                className="rounded-md p-1 hover:bg-red-900/60 text-red-400"
+                className="rounded-md p-1 hover:bg-red-900/60 text-red-400 cursor-pointer"
                 aria-label="Dismiss error"
               >
                 <X className="h-3.5 w-3.5" />
@@ -84,9 +133,10 @@ export function ChatMessages({
           </div>
         )}
 
-        {/* Scroll anchor */}
-        <div ref={messagesEndRef} />
+        {/* Invisible bottom spacer to ensure final message is never cramped */}
+        <div className="h-4 shrink-0" aria-hidden="true" />
       </div>
     </div>
   );
 }
+

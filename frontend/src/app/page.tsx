@@ -26,7 +26,7 @@ export default function Page() {
   // Prevent UI flicker during initial auth hydration
   if (isLoading) {
     return (
-      <div className="flex h-screen w-screen items-center justify-center bg-[#07080d]">
+      <div className="flex h-[100dvh] w-full items-center justify-center bg-[#07080d]">
         <div className="flex flex-col items-center gap-3">
           <Loader2 className="h-8 w-8 animate-spin text-cyan-400" />
           <p className="text-xs text-zinc-500 font-medium tracking-wide">

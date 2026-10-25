@@ -37,7 +37,7 @@ export default function RootLayout({
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} dark h-full antialiased`}
     >
-      <body className="h-full overflow-hidden bg-[#07080d] text-[#ececec]">
+      <body className="h-full h-[100dvh] w-full m-0 p-0 overflow-hidden bg-[#07080d] text-[#ececec]">
         <AuthProvider>
           {children}
           <Toaster position="top-right" richColors theme="dark" closeButton />

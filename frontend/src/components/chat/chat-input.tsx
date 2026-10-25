@@ -52,10 +52,10 @@ export function ChatInput({
 
   return (
     <div
-      className={`w-full px-4 transition-all duration-300 ${
+      className={`w-full shrink-0 transition-all duration-300 z-10 ${
         isCentered
-          ? "max-w-2xl mx-auto"
-          : "max-w-3xl mx-auto pb-4 pt-2"
+          ? "max-w-2xl mx-auto px-4"
+          : "max-w-3xl mx-auto px-4 pb-4 pt-2 pb-[max(1rem,env(safe-area-inset-bottom))] bg-gradient-to-t from-[#07080d] via-[#07080d]/80 to-transparent"
       }`}
     >
       <form

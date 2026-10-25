@@ -298,13 +298,13 @@ export function ChatSidebar({
 
       {/* Sidebar Drawer */}
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex flex-col justify-between bg-[#090b12]/95 backdrop-blur-2xl text-[#ececec] transition-all duration-300 ease-in-out md:static shrink-0 ${
+        className={`fixed inset-y-0 left-0 z-50 flex flex-col justify-between bg-[#090b12]/95 backdrop-blur-2xl text-[#ececec] transition-all duration-300 ease-in-out md:static shrink-0 h-full min-h-0 select-none ${
           isOpen
             ? "w-64 p-3 border-r border-white/[0.06] translate-x-0 opacity-100"
             : "w-0 p-0 border-r-0 -translate-x-full md:translate-x-0 md:w-0 opacity-0 overflow-hidden pointer-events-none"
         }`}
       >
-        <div className="flex flex-1 flex-col overflow-hidden space-y-3 min-w-[232px]">
+        <div className="flex flex-1 flex-col min-h-0 overflow-hidden space-y-3 min-w-[232px]">
           {/* Top Brand & Controls Header */}
           <div className="flex items-center justify-between px-1 pt-1 shrink-0">
             <button
@@ -385,7 +385,7 @@ export function ChatSidebar({
           </button>
 
           {/* Scrollable Conversation Lists */}
-          <div className="flex-1 overflow-y-auto space-y-4 pr-1 -mr-1">
+          <div className="flex-1 min-h-0 overflow-y-auto space-y-4 pr-1 -mr-1">
             {isLoadingConversations && safeConversations.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-8 text-center text-xs text-zinc-500">
                 <Loader2 className="h-4 w-4 animate-spin mb-2 text-zinc-400" />

@@ -45,7 +45,7 @@ export function ChatContainer() {
   const hasMessages = messages.length > 0;
 
   return (
-    <div className="relative flex h-screen w-full overflow-hidden bg-[#07080d] text-[#ececec] font-sans">
+    <div className="relative flex h-full h-[100dvh] max-h-[100dvh] w-full overflow-hidden bg-[#07080d] text-[#ececec] font-sans">
       {/* Cyber Neon Atmospheric Ambient Glows */}
       <div className="pointer-events-none absolute -top-40 -left-40 h-[550px] w-[550px] rounded-full bg-cyan-500/10 blur-[140px] opacity-80" />
       <div className="pointer-events-none absolute -bottom-40 right-10 h-[600px] w-[600px] rounded-full bg-purple-600/10 blur-[150px] opacity-75" />
@@ -70,7 +70,7 @@ export function ChatContainer() {
       />
 
       {/* Main Conversation Workspace */}
-      <main className="relative z-10 flex flex-1 flex-col overflow-hidden bg-transparent transition-all duration-300">
+      <main className="relative z-10 flex flex-1 flex-col min-w-0 min-h-0 h-full overflow-hidden bg-transparent transition-all duration-300">
         {/* Top Header */}
         <ChatHeader
           onToggleSidebar={toggleSidebar}
@@ -81,9 +81,9 @@ export function ChatContainer() {
 
         {/* Dynamic View: Centered prompt for New Chat OR Scrollable Feed when chat started */}
         {!hasMessages ? (
-          /* Empty / New Chat State: Centered 'What's on the agenda today?' & Floating Input (Images 1 & 2) */
-          <div className="flex flex-1 flex-col items-center justify-center px-4 py-8 overflow-y-auto">
-            <div className="w-full max-w-2xl text-center space-y-6">
+          /* Empty / New Chat State: Centered 'What's on the agenda today?' & Floating Input */
+          <div className="flex flex-1 flex-col items-center justify-center min-h-0 min-w-0 px-4 py-8 overflow-y-auto">
+            <div className="w-full max-w-2xl text-center space-y-6 my-auto">
               <h1 className="text-2xl sm:text-4xl font-bold tracking-tight bg-gradient-to-r from-white via-cyan-100 to-purple-200 bg-clip-text text-transparent drop-shadow-[0_2px_15px_rgba(0,210,255,0.15)]">
                 What&apos;s on the agenda today?
               </h1>
@@ -103,7 +103,7 @@ export function ChatContainer() {
                   <p>{errorMessage}</p>
                   <button
                     onClick={dismissError}
-                    className="mt-1 text-red-400 underline hover:text-red-300"
+                    className="mt-1 text-red-400 underline hover:text-red-300 cursor-pointer"
                   >
                     Dismiss
                   </button>
@@ -112,8 +112,8 @@ export function ChatContainer() {
             </div>
           </div>
         ) : (
-          /* Active Chat State: Messages Feed + Floating Bottom Input (Image 3) */
-          <div className="flex flex-1 flex-col overflow-hidden">
+          /* Active Chat State: Messages Feed + Anchored Bottom Input */
+          <div className="flex flex-1 flex-col min-h-0 min-w-0 overflow-hidden relative">
             {/* Scrollable Message History Area */}
             <ChatMessages
               messages={messages}
@@ -121,6 +121,7 @@ export function ChatContainer() {
               errorMessage={errorMessage}
               onRetry={handleRetry}
               onDismissError={dismissError}
+              conversationId={currentConversationId}
             />
 
             {/* Bottom Message Input */}
