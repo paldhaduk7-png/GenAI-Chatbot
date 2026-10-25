@@ -45,7 +45,15 @@ export function ChatContainer() {
   const hasMessages = messages.length > 0;
 
   return (
-    <div className="flex h-screen w-full overflow-hidden bg-[#212121] text-[#ececec] font-sans">
+    <div className="relative flex h-screen w-full overflow-hidden bg-[#07080d] text-[#ececec] font-sans">
+      {/* Cyber Neon Atmospheric Ambient Glows */}
+      <div className="pointer-events-none absolute -top-40 -left-40 h-[550px] w-[550px] rounded-full bg-cyan-500/10 blur-[140px] opacity-80" />
+      <div className="pointer-events-none absolute -bottom-40 right-10 h-[600px] w-[600px] rounded-full bg-purple-600/10 blur-[150px] opacity-75" />
+      <div className="pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-[450px] w-[650px] rounded-full bg-blue-500/5 blur-[160px]" />
+      
+      {/* Subtle Cyber Grid */}
+      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_right,#ffffff05_1px,transparent_1px),linear-gradient(to_bottom,#ffffff05_1px,transparent_1px)] bg-[size:4rem_4rem] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_50%,#000_70%,transparent_100%)] opacity-35" />
+
       {/* Navigation & Conversation Sessions Controls */}
       <ChatSidebar
         isOpen={isSidebarOpen}
@@ -62,13 +70,13 @@ export function ChatContainer() {
       />
 
       {/* Main Conversation Workspace */}
-      <main className="flex flex-1 flex-col overflow-hidden bg-[#212121] transition-all duration-300">
+      <main className="relative z-10 flex flex-1 flex-col overflow-hidden bg-transparent transition-all duration-300">
         {/* Top Header */}
         <ChatHeader
           onToggleSidebar={toggleSidebar}
           isSidebarOpen={isSidebarOpen}
           onNewChat={handleNewChat}
-          title={currentConversation?.title || "ChatGPT"}
+          title={currentConversation?.title || "PD"}
         />
 
         {/* Dynamic View: Centered prompt for New Chat OR Scrollable Feed when chat started */}
@@ -76,7 +84,7 @@ export function ChatContainer() {
           /* Empty / New Chat State: Centered 'What's on the agenda today?' & Floating Input (Images 1 & 2) */
           <div className="flex flex-1 flex-col items-center justify-center px-4 py-8 overflow-y-auto">
             <div className="w-full max-w-2xl text-center space-y-6">
-              <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-white">
+              <h1 className="text-2xl sm:text-4xl font-bold tracking-tight bg-gradient-to-r from-white via-cyan-100 to-purple-200 bg-clip-text text-transparent drop-shadow-[0_2px_15px_rgba(0,210,255,0.15)]">
                 What&apos;s on the agenda today?
               </h1>
 

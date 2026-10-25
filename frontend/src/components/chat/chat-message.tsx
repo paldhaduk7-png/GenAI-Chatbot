@@ -41,7 +41,7 @@ export function ChatMessage({ message, onRetry }: ChatMessageProps) {
   if (isUser) {
     return (
       <div className="flex justify-end my-3">
-        <div className="max-w-[80%] sm:max-w-[70%] rounded-2xl bg-[#2f2f2f] px-4 py-2.5 text-sm leading-relaxed text-white shadow-xs">
+        <div className="max-w-[80%] sm:max-w-[70%] rounded-2xl bg-[#141824]/90 border border-white/10 hover:border-cyan-500/25 px-4 py-2.5 text-sm leading-relaxed text-white shadow-[0_4px_20px_rgba(0,0,0,0.35),0_0_12px_rgba(0,210,255,0.04)] transition-all">
           <p className="whitespace-pre-wrap">{message.content}</p>
         </div>
       </div>

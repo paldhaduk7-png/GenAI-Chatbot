@@ -63,15 +63,15 @@ export function ChatInput({
           e.preventDefault();
           if (hasContent && !isLoading) onSubmit();
         }}
-        className="relative flex items-center gap-2 rounded-full border border-zinc-700/60 bg-[#2f2f2f] px-3 py-2 shadow-lg transition hover:border-zinc-600 focus-within:border-zinc-500"
+        className="relative flex items-center gap-2 rounded-full border border-white/10 bg-[#10131d]/85 backdrop-blur-2xl px-3 py-2 shadow-[0_10px_35px_rgba(0,0,0,0.6),0_0_20px_rgba(0,210,255,0.06)] transition-all duration-200 hover:border-cyan-500/30 focus-within:border-cyan-400/60 focus-within:shadow-[0_10px_40px_rgba(0,0,0,0.6),0_0_25px_rgba(0,210,255,0.18)]"
       >
         {/* Plus / Attachment Button */}
         <button
           type="button"
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-zinc-300 hover:bg-zinc-700/60 hover:text-white transition"
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-zinc-300 hover:bg-white/10 hover:text-white transition"
           title="Attach or add tools"
         >
-          <Plus className="h-5 w-5" />
+          <Plus className="h-5 w-5 text-cyan-400" />
         </button>
 
         {/* Text Area */}
@@ -93,8 +93,8 @@ export function ChatInput({
             disabled={!hasContent || isLoading}
             className={`flex h-8 w-8 items-center justify-center rounded-full transition active:scale-95 ${
               hasContent
-                ? "bg-white text-black hover:bg-zinc-200 cursor-pointer"
-                : "bg-zinc-700/60 text-zinc-500 cursor-not-allowed"
+                ? "bg-gradient-to-r from-cyan-400 to-purple-500 text-black hover:opacity-90 shadow-[0_0_14px_rgba(0,210,255,0.4)] cursor-pointer"
+                : "bg-white/10 text-zinc-500 cursor-not-allowed"
             }`}
             aria-label="Send prompt"
           >
