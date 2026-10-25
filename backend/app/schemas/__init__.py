@@ -1,4 +1,11 @@
 """Schemas package initialization."""
+from app.schemas.auth import (
+    Token,
+    TokenData,
+    UserLogin,
+    UserOut,
+    UserRegister,
+)
 from app.schemas.chat import ChatRequest, ChatResponse, Message
 from app.schemas.conversation import (
     ConversationCreate,
@@ -19,4 +26,9 @@ __all__ = [
     "ConversationResponse",
     "ConversationUpdate",
     "MessageResponse",
+    "UserRegister",
+    "UserLogin",
+    "UserOut",
+    "Token",
+    "TokenData",
 ]

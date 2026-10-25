@@ -16,9 +16,63 @@ def get_utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+class User(Base):
+    """
+    Represents an authenticated user account.
+    """
+    __tablename__ = "users"
+
+    id: Mapped[str] = mapped_column(
+        String(36),
+        primary_key=True,
+        default=lambda: str(uuid.uuid4()),
+        index=True,
+    )
+    email: Mapped[str] = mapped_column(
+        String(255),
+        unique=True,
+        nullable=False,
+        index=True,
+    )
+    hashed_password: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+    )
+    full_name: Mapped[str] = mapped_column(
+        String(100),
+        nullable=False,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=get_utc_now,
+        server_default=func.now(),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=get_utc_now,
+        server_default=func.now(),
+        onupdate=get_utc_now,
+    )
+
+    # One-to-many relationship: One user has multiple conversations.
+    # Cascades deletion only to this user's conversations.
+    conversations: Mapped[List["Conversation"]] = relationship(
+        "Conversation",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        order_by="Conversation.updated_at.desc()",
+    )
+
+    def __repr__(self) -> str:
+        return f"<User(id={self.id!r}, email={self.email!r}, full_name={self.full_name!r})>"
+
+
 class Conversation(Base):
     """
     Represents an individual chat session.
+    May belong to an authenticated user (user_id), or be null for unassigned conversations.
     """
     __tablename__ = "conversations"
 
@@ -26,6 +80,12 @@ class Conversation(Base):
         String(36),
         primary_key=True,
         default=lambda: str(uuid.uuid4()),
+        index=True,
+    )
+    user_id: Mapped[Optional[str]] = mapped_column(
+        String(36),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=True,
         index=True,
     )
     title: Mapped[str] = mapped_column(
@@ -52,7 +112,13 @@ class Conversation(Base):
         onupdate=get_utc_now,
     )
 
-    # One-to-many relationship with cascading deletion
+    # Many-to-one relationship back to the user
+    user: Mapped[Optional["User"]] = relationship(
+        "User",
+        back_populates="conversations",
+    )
+
+    # One-to-many relationship with cascading deletion to messages
     messages: Mapped[List["Message"]] = relationship(
         "Message",
         back_populates="conversation",
@@ -63,10 +129,11 @@ class Conversation(Base):
     __table_args__ = (
         Index("ix_conversations_updated_at", "updated_at"),
         Index("ix_conversations_pinned_updated_at", "pinned", "updated_at"),
+        Index("ix_conversations_user_id", "user_id"),
     )
 
     def __repr__(self) -> str:
-        return f"<Conversation(id={self.id!r}, title={self.title!r}, pinned={self.pinned})>"
+        return f"<Conversation(id={self.id!r}, user_id={self.user_id!r}, title={self.title!r}, pinned={self.pinned})>"
 
 
 class Message(Base):
