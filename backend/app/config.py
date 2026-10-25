@@ -13,5 +13,5 @@ MISTRAL_API_KEY: str = os.getenv("MISTRAL_API_KEY", "")
 GOOGLE_API_KEY: str = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY", "")
 
 # Default models
-MISTRAL_MODEL: str = os.getenv("MISTRAL_MODEL", "mistral-small-latest")
+MISTRAL_MODEL: str = os.getenv("MISTRAL_MODEL", "open-mistral-7b")
 GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite")
