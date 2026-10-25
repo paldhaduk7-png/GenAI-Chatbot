@@ -16,6 +16,9 @@ import { ChatInput } from "./chat-input";
 export function ChatContainer() {
   const {
     messages,
+    currentConversationId,
+    conversations,
+    isLoadingConversations,
     input,
     setInput,
     isLoading,
@@ -25,23 +28,41 @@ export function ChatContainer() {
     sendMessage,
     handleRetry,
     handleNewChat,
+    selectConversation,
+    deleteConversation,
+    togglePin,
+    renameConversation,
     dismissError,
   } = useChat();
 
+  const currentConversation = conversations.find(
+    (c) => c.id === currentConversationId
+  );
+
   return (
     <div className="flex h-screen w-full overflow-hidden bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 font-sans">
-      {/* Navigation & Session Controls */}
+      {/* Navigation & Conversation Sessions Controls */}
       <ChatSidebar
         isOpen={isSidebarOpen}
         onClose={() => setIsSidebarOpen(false)}
         onNewChat={handleNewChat}
         isLoading={isLoading}
+        conversations={conversations}
+        currentConversationId={currentConversationId}
+        onSelectConversation={selectConversation}
+        onDeleteConversation={deleteConversation}
+        onTogglePin={togglePin}
+        onRenameConversation={renameConversation}
+        isLoadingConversations={isLoadingConversations}
       />
 
       {/* Main Conversation Workspace */}
       <main className="flex flex-1 flex-col overflow-hidden">
         {/* Top Header */}
-        <ChatHeader onOpenSidebar={() => setIsSidebarOpen(true)} />
+        <ChatHeader
+          onOpenSidebar={() => setIsSidebarOpen(true)}
+          title={currentConversation?.title || "AI Conversation"}
+        />
 
         {/* Scrollable Message History Area */}
         <ChatMessages

@@ -1,170 +1,357 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import axios from "axios";
-import { Message, ApiChatMessage } from "@/types/chat";
-import { sendChatMessage } from "@/lib/api";
+import { Message, ApiChatMessage, Conversation } from "@/types/chat";
+import {
+  sendChatMessage,
+  fetchConversations,
+  fetchConversation,
+  updateConversationTitle,
+  toggleConversationPin,
+  deleteConversation as deleteConversationApi,
+} from "@/lib/api";
 
 /**
  * Custom React Hook: useChat
  * 
- * Encapsulates all chat-related business logic, state management, and API calls:
- * - Message history management (user and assistant messages).
- * - Controlled input state.
- * - Loading indicator state during active backend requests.
- * - Human-friendly error handling with error extraction and retry support.
+ * Encapsulates chat business logic, active message state, and PostgreSQL conversation management:
+ * - Active session message management and controlled input state.
+ * - Current conversation session tracking (`currentConversationId`).
+ * - Conversation listing, selection, deletion, pinning, and renaming.
+ * - In-flight backend request handling with race-condition prevention.
+ * - Human-friendly sanitized error handling with retry support.
  * - Mobile sidebar visibility state.
  */
 export function useChat() {
   // Active conversation history
   const [messages, setMessages] = useState<Message[]>([]);
 
+  // Current active conversation ID (null indicates an unsaved new chat)
+  const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
+
+  // List of all user conversations retrieved from PostgreSQL
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+
+  // Loading flag for fetching conversation lists
+  const [isLoadingConversations, setIsLoadingConversations] = useState(false);
+
   // Current typed input
   const [input, setInput] = useState("");
 
-  // Loading flag for in-flight backend requests
+  // Loading flag for in-flight LLM requests or conversation loads
   const [isLoading, setIsLoading] = useState(false);
 
-  // User-facing error message (sanitized, no internal stack traces or secrets)
+  // User-facing error message (sanitized)
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   // Mobile sidebar drawer state
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
+  // Request token counter to guard against race conditions and stale async overwrites
+  const requestIdRef = useRef<number>(0);
+
+  /**
+   * Fetches all conversations from PostgreSQL.
+   */
+  const loadConversations = useCallback(async () => {
+    try {
+      setIsLoadingConversations(true);
+      const list = await fetchConversations();
+      setConversations(list);
+    } catch (err: unknown) {
+      console.error("Failed to load conversations:", err);
+    } finally {
+      setIsLoadingConversations(false);
+    }
+  }, []);
+
+  // Load conversations on component mount
+  useEffect(() => {
+    loadConversations();
+  }, [loadConversations]);
+
   /**
    * Resets the active chat session:
-   * Clears messages, input text, error notices, and closes the mobile sidebar.
+   * Clears messages, active conversation ID, input text, errors, and closes mobile sidebar.
    */
-  const handleNewChat = () => {
+  const handleNewChat = useCallback(() => {
+    // Invalidate any in-flight async request
+    requestIdRef.current += 1;
+    setCurrentConversationId(null);
     setMessages([]);
     setInput("");
     setErrorMessage(null);
     setIsSidebarOpen(false);
-  };
+  }, []);
 
   /**
    * Dismisses any active error notification banner.
    */
-  const dismissError = () => {
+  const dismissError = useCallback(() => {
     setErrorMessage(null);
-  };
+  }, []);
+
+  /**
+   * Selects an existing conversation, fetches its messages from PostgreSQL,
+   * and loads them into active state.
+   */
+  const selectConversation = useCallback(
+    async (conversationId: string) => {
+      if (conversationId === currentConversationId && !isLoading) {
+        setIsSidebarOpen(false);
+        return;
+      }
+
+      const reqId = ++requestIdRef.current;
+      setErrorMessage(null);
+      setIsLoading(true);
+      setCurrentConversationId(conversationId);
+      setIsSidebarOpen(false);
+
+      try {
+        const detail = await fetchConversation(conversationId);
+
+        // Guard against stale asynchronous response if user switched chats quickly
+        if (requestIdRef.current !== reqId) return;
+
+        // Map persisted database messages to UI Message interface
+        const loadedMessages: Message[] = detail.messages.map((m) => ({
+          id: m.id,
+          role: m.role,
+          content: m.content,
+          provider: m.provider,
+        }));
+
+        setMessages(loadedMessages);
+      } catch (err: unknown) {
+        if (requestIdRef.current !== reqId) return;
+        console.error("Failed to load conversation details:", err);
+        setErrorMessage("Could not load the requested conversation. Please try again.");
+      } finally {
+        if (requestIdRef.current === reqId) {
+          setIsLoading(false);
+        }
+      }
+    },
+    [currentConversationId, isLoading]
+  );
+
+  /**
+   * Deletes a conversation from PostgreSQL and updates the local conversation list.
+   * If the currently active conversation is deleted, resets the chat to a blank session.
+   */
+  const deleteConversation = useCallback(
+    async (conversationId: string) => {
+      try {
+        // Optimistically update conversation list
+        setConversations((prev) => prev.filter((c) => c.id !== conversationId));
+
+        if (currentConversationId === conversationId) {
+          handleNewChat();
+        }
+
+        await deleteConversationApi(conversationId);
+      } catch (err: unknown) {
+        console.error("Failed to delete conversation:", err);
+        setErrorMessage("Failed to delete conversation from database.");
+        // Refresh list on error to ensure sync
+        loadConversations();
+      }
+    },
+    [currentConversationId, handleNewChat, loadConversations]
+  );
+
+  /**
+   * Toggles the pinned status of a conversation.
+   */
+  const togglePin = useCallback(
+    async (conversationId: string) => {
+      try {
+        // Optimistically update pinned state
+        setConversations((prev) =>
+          prev.map((c) =>
+            c.id === conversationId ? { ...c, pinned: !c.pinned } : c
+          )
+        );
+
+        await toggleConversationPin(conversationId);
+        // Refresh conversations to preserve updated order
+        loadConversations();
+      } catch (err: unknown) {
+        console.error("Failed to toggle pin:", err);
+        setErrorMessage("Failed to update pinned status.");
+        loadConversations();
+      }
+    },
+    [loadConversations]
+  );
+
+  /**
+   * Renames a conversation's title.
+   */
+  const renameConversation = useCallback(
+    async (conversationId: string, newTitle: string) => {
+      const trimmed = newTitle.trim();
+      if (!trimmed) return;
+
+      try {
+        // Optimistically update title
+        setConversations((prev) =>
+          prev.map((c) =>
+            c.id === conversationId ? { ...c, title: trimmed } : c
+          )
+        );
+
+        await updateConversationTitle(conversationId, trimmed);
+      } catch (err: unknown) {
+        console.error("Failed to rename conversation:", err);
+        setErrorMessage("Failed to rename conversation.");
+        loadConversations();
+      }
+    },
+    [loadConversations]
+  );
 
   /**
    * Centralized API Request Executor:
-   * Formats the conversation history into the FastAPI schema, dispatches the request,
-   * appends the AI reply (with provider tracking), and handles any network or server errors.
-   * 
-   * @param conversation Full conversation array to send as context.
+   * Dispatches the chat payload to the backend, binds conversation_id,
+   * appends the AI reply, and updates conversation sessions in PostgreSQL.
    */
-  const executeChatRequest = async (conversation: Message[]) => {
-    setErrorMessage(null);
-    setIsLoading(true);
+  const executeChatRequest = useCallback(
+    async (conversation: Message[]) => {
+      const reqId = ++requestIdRef.current;
+      setErrorMessage(null);
+      setIsLoading(true);
 
-    try {
-      // Map to backend schema: { role: "user" | "assistant", content: string }
-      const apiPayload: ApiChatMessage[] = conversation.map((msg) => ({
-        role: msg.role,
-        content: msg.content,
-      }));
+      try {
+        // Map to backend schema: { role: "user" | "assistant", content: string }
+        const apiPayload: ApiChatMessage[] = conversation.map((msg) => ({
+          role: msg.role,
+          content: msg.content,
+        }));
 
-      // Call the API service via Axios
-      const response = await sendChatMessage(apiPayload);
+        // Send request with active conversation ID (or null for new session)
+        const response = await sendChatMessage(apiPayload, currentConversationId);
 
-      // Add assistant response with provider badge metadata
-      const assistantMessage: Message = {
-        id: `assistant-${Date.now()}`,
-        role: "assistant",
-        content: response.content,
-        provider: response.provider,
-      };
+        // Guard against stale response if user switched chats while generating
+        if (requestIdRef.current !== reqId) return;
 
-      setMessages((prev) => [...prev, assistantMessage]);
-    } catch (err: unknown) {
-      console.error("Chat API request error:", err);
+        // Add assistant response with provider badge metadata
+        const assistantMessage: Message = {
+          id: `assistant-${Date.now()}`,
+          role: "assistant",
+          content: response.content,
+          provider: response.provider,
+        };
 
-      let userFriendlyError =
-        "Failed to communicate with the AI backend. Please verify the server is running.";
+        setMessages((prev) => [...prev, assistantMessage]);
 
-      if (axios.isAxiosError(err)) {
-        if (!err.response) {
-          // Backend server unreachable or offline
-          userFriendlyError =
-            "Cannot connect to the backend server. Please verify that FastAPI is running on http://127.0.0.1:8000.";
-        } else if (err.code === "ECONNABORTED") {
-          // Request timed out
-          userFriendlyError =
-            "The request timed out while waiting for the AI response. Please try again.";
-        } else {
-          // HTTP error response from FastAPI
-          const status = err.response.status;
-          const detail = err.response.data?.detail;
-
-          if (status === 503) {
-            userFriendlyError =
-              typeof detail === "string"
-                ? detail
-                : "Both primary (Mistral) and fallback (Gemini) AI providers are currently unavailable. Please try again later.";
-          } else if (status === 500) {
-            userFriendlyError =
-              typeof detail === "string" && !detail.includes("Traceback")
-                ? detail
-                : "An internal server error occurred while processing your request. Please check backend logs.";
-          } else if (status === 422 || status === 400) {
-            userFriendlyError =
-              typeof detail === "string"
-                ? detail
-                : "The request could not be processed due to invalid message format.";
-          } else {
-            userFriendlyError =
-              typeof detail === "string"
-                ? detail
-                : `Backend returned an error (HTTP ${status}). Please try again.`;
-          }
+        // If this was a new conversation, record the assigned ID
+        if (response.conversation_id && !currentConversationId) {
+          setCurrentConversationId(response.conversation_id);
         }
-      } else if (err instanceof Error) {
-        userFriendlyError = err.message;
-      }
 
-      setErrorMessage(userFriendlyError);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+        // Refresh conversation list to show newly created or updated conversation
+        loadConversations();
+      } catch (err: unknown) {
+        if (requestIdRef.current !== reqId) return;
+        console.error("Chat API request error:", err);
+
+        let userFriendlyError =
+          "Failed to communicate with the AI backend. Please verify the server is running.";
+
+        if (axios.isAxiosError(err)) {
+          if (!err.response) {
+            userFriendlyError =
+              "Cannot connect to the backend server. Please verify that FastAPI is running on http://127.0.0.1:8000.";
+          } else if (err.code === "ECONNABORTED") {
+            userFriendlyError =
+              "The request timed out while waiting for the AI response. Please try again.";
+          } else {
+            const status = err.response.status;
+            const detail = err.response.data?.detail;
+
+            if (status === 503) {
+              userFriendlyError =
+                typeof detail === "string"
+                  ? detail
+                  : "Both primary (Mistral) and fallback (Gemini) AI providers are currently unavailable. Please try again later.";
+            } else if (status === 500) {
+              userFriendlyError =
+                typeof detail === "string" && !detail.includes("Traceback")
+                  ? detail
+                  : "An internal server error occurred while processing your request. Please check backend logs.";
+            } else if (status === 422 || status === 400) {
+              userFriendlyError =
+                typeof detail === "string"
+                  ? detail
+                  : "The request could not be processed due to invalid message format.";
+            } else if (status === 404) {
+              userFriendlyError =
+                "The current conversation was not found in the database. Starting a new chat session.";
+              handleNewChat();
+            } else {
+              userFriendlyError =
+                typeof detail === "string"
+                  ? detail
+                  : `Backend returned an error (HTTP ${status}). Please try again.`;
+            }
+          }
+        } else if (err instanceof Error) {
+          userFriendlyError = err.message;
+        }
+
+        setErrorMessage(userFriendlyError);
+      } finally {
+        if (requestIdRef.current === reqId) {
+          setIsLoading(false);
+        }
+      }
+    },
+    [currentConversationId, handleNewChat, loadConversations]
+  );
 
   /**
    * Message Submission Handler:
    * Validates user input, adds user message to state, and initiates the API call.
    */
-  const sendMessage = (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
+  const sendMessage = useCallback(
+    (e?: React.FormEvent) => {
+      if (e) e.preventDefault();
 
-    const trimmedText = input.trim();
-    if (!trimmedText || isLoading) return;
+      const trimmedText = input.trim();
+      if (!trimmedText || isLoading) return;
 
-    const newUserMessage: Message = {
-      id: `user-${Date.now()}`,
-      role: "user",
-      content: trimmedText,
-    };
+      const newUserMessage: Message = {
+        id: `user-${Date.now()}`,
+        role: "user",
+        content: trimmedText,
+      };
 
-    const updatedMessages = [...messages, newUserMessage];
-    setMessages(updatedMessages);
-    setInput("");
+      const updatedMessages = [...messages, newUserMessage];
+      setMessages(updatedMessages);
+      setInput("");
 
-    executeChatRequest(updatedMessages);
-  };
+      executeChatRequest(updatedMessages);
+    },
+    [input, isLoading, messages, executeChatRequest]
+  );
 
   /**
    * Retry Handler:
    * Re-sends the active conversation history after a failed request.
    */
-  const handleRetry = () => {
+  const handleRetry = useCallback(() => {
     if (messages.length === 0 || isLoading) return;
     executeChatRequest(messages);
-  };
+  }, [messages, isLoading, executeChatRequest]);
 
   return {
     messages,
+    currentConversationId,
+    conversations,
+    isLoadingConversations,
     input,
     setInput,
     isLoading,
@@ -174,6 +361,10 @@ export function useChat() {
     sendMessage,
     handleRetry,
     handleNewChat,
+    selectConversation,
+    deleteConversation,
+    togglePin,
+    renameConversation,
     dismissError,
   };
 }
