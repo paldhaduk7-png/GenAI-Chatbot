@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.db import Base, Conversation, Message, engine
+from app.routes.auth import router as auth_router
 from app.routes.chat import router as chat_router
 from app.routes.conversations import router as conversations_router
 
@@ -17,6 +18,8 @@ async def lifespan(app: FastAPI):
         try:
             logger.info("Verifying and creating database tables...")
             Base.metadata.create_all(bind=engine)
+            from app.db.migrations.run_migrations import apply_migrations
+            apply_migrations()
             logger.info("Database tables initialized successfully.")
         except Exception as exc:
             logger.error("Failed to initialize database tables: %s", exc)
@@ -42,6 +45,7 @@ app.add_middleware(
 )
 
 # Register routers
+app.include_router(auth_router)
 app.include_router(chat_router)
 app.include_router(conversations_router)
 

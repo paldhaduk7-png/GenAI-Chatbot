@@ -6,7 +6,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models import Conversation, Message as DbMessage
+from app.core.deps import get_current_user
+from app.db.models import Conversation, Message as DbMessage, User
 from app.db.session import get_db
 from app.schemas.chat import ChatRequest, ChatResponse, Message
 from app.services.llm_service import generate_chat_response
@@ -18,12 +19,15 @@ router = APIRouter(prefix="/api", tags=["chat"])
 
 @router.post("/chat", response_model=ChatResponse)
 def chat_endpoint(
-    request: ChatRequest, db: Session = Depends(get_db)
+    request: ChatRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ) -> ChatResponse:
     """
-    POST /api/chat endpoint with database conversation persistence and LLM fallback.
-    - If conversation_id is omitted, auto-creates a new conversation session.
-    - If conversation_id is provided, validates that it exists (404 if not found).
+    POST /api/chat endpoint with user authentication, database persistence, and LLM fallback.
+    - Requires valid Bearer authentication (401 if unauthenticated).
+    - If conversation_id is omitted, auto-creates a new conversation assigned to current_user.
+    - If conversation_id is provided, validates that it exists and is owned by current_user (404 otherwise).
     - Restores existing conversation history from PostgreSQL as LLM context.
     - Appends latest user message and assistant reply with provider tracking.
     - Safe transaction handling: LLM failures do not commit incomplete user messages.
@@ -41,9 +45,13 @@ def chat_endpoint(
             detail="Chat request must contain at least one user message.",
         )
 
-    # 2. Resolve or create conversation
+    # 2. Resolve or create conversation with ownership enforcement
     if request.conversation_id:
-        conversation = db.get(Conversation, request.conversation_id)
+        stmt = select(Conversation).where(
+            Conversation.id == request.conversation_id,
+            Conversation.user_id == current_user.id,
+        )
+        conversation = db.scalars(stmt).first()
         if not conversation:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -54,7 +62,10 @@ def chat_endpoint(
         title_snippet = latest_user_message.content.strip().replace("\n", " ")
         if len(title_snippet) > 50:
             title_snippet = title_snippet[:47] + "..."
-        conversation = Conversation(title=title_snippet or "New Conversation")
+        conversation = Conversation(
+            title=title_snippet or "New Conversation",
+            user_id=current_user.id,
+        )
         db.add(conversation)
         db.flush()  # Assigns conversation.id without committing transaction
 
