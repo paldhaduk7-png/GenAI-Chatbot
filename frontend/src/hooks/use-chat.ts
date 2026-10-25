@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import axios from "axios";
+import { toast } from "sonner";
 import { Message, ApiChatMessage, Conversation } from "@/types/chat";
 import {
   sendChatMessage,
@@ -134,7 +135,9 @@ export function useChat() {
       } catch (err: unknown) {
         if (requestIdRef.current !== reqId) return;
         console.error("Failed to load conversation details:", err);
-        setErrorMessage("Could not load the requested conversation. Please try again.");
+        const msg = "Could not load the requested conversation. Please try again.";
+        setErrorMessage(msg);
+        toast.error(msg);
       } finally {
         if (requestIdRef.current === reqId) {
           setIsLoading(false);
@@ -161,9 +164,12 @@ export function useChat() {
         }
 
         await deleteConversationApi(conversationId);
+        toast.success("Conversation deleted");
       } catch (err: unknown) {
         console.error("Failed to delete conversation:", err);
-        setErrorMessage("Failed to delete conversation from database.");
+        const msg = "Failed to delete conversation from database.";
+        setErrorMessage(msg);
+        toast.error(msg);
         // Refresh list on error to ensure sync
         loadConversations();
       }
@@ -181,12 +187,16 @@ export function useChat() {
       if (target && !target.pinned) {
         const pinnedCount = conversations.filter((c) => c.pinned).length;
         if (pinnedCount >= 7) {
-          setErrorMessage("You can pin up to 7 conversations. Please unpin one first.");
+          const msg = "You can pin up to 7 conversations. Please unpin one first.";
+          setErrorMessage(msg);
+          toast.warning(msg);
           return;
         }
       }
 
       try {
+        const willPin = target ? !target.pinned : true;
+
         // Optimistically update pinned state
         setConversations((prev) =>
           Array.isArray(prev)
@@ -197,6 +207,7 @@ export function useChat() {
         );
 
         await toggleConversationPin(conversationId);
+        toast.success(willPin ? "Conversation pinned" : "Conversation unpinned");
         // Refresh conversations to preserve updated order
         loadConversations();
       } catch (err: unknown) {
@@ -204,6 +215,7 @@ export function useChat() {
         const errorWithResponse = err as { response?: { data?: { detail?: string } } };
         const detail = errorWithResponse?.response?.data?.detail || "Failed to update pinned status.";
         setErrorMessage(detail);
+        toast.error(detail);
         loadConversations();
       }
     },
@@ -229,9 +241,12 @@ export function useChat() {
         );
 
         await updateConversationTitle(conversationId, trimmed);
+        toast.success("Conversation renamed");
       } catch (err: unknown) {
         console.error("Failed to rename conversation:", err);
-        setErrorMessage("Failed to rename conversation.");
+        const msg = "Failed to rename conversation.";
+        setErrorMessage(msg);
+        toast.error(msg);
         loadConversations();
       }
     },
@@ -328,6 +343,7 @@ export function useChat() {
         }
 
         setErrorMessage(userFriendlyError);
+        toast.error(userFriendlyError);
       } finally {
         if (requestIdRef.current === reqId) {
           setIsLoading(false);
