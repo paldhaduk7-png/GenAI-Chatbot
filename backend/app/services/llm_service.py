@@ -1,4 +1,5 @@
 import logging
+import os
 from typing import List, Union
 
 from fastapi import HTTPException
@@ -41,6 +42,15 @@ def is_provider_fallback_error(exc: Exception) -> bool:
     # Programming errors in local code should not trigger provider fallback
     if isinstance(exc, (TypeError, ValueError, KeyError, IndexError, AttributeError, NameError)):
         return False
+
+    # Check for underlying exception if wrapped by tenacity
+    if hasattr(exc, "last_attempt"):
+        try:
+            inner_exc = exc.last_attempt.exception()
+            if inner_exc and inner_exc is not exc:
+                return is_provider_fallback_error(inner_exc)
+        except Exception:
+            pass
 
     # Check for HTTP status code on exception or inner response
     status_code = getattr(exc, "status_code", None)
@@ -101,14 +111,22 @@ def generate_chat_response(messages: List[Message]) -> ChatResponse:
     Generate chat response using Mistral as primary LLM and Gemini as fallback.
     Preserves conversation history across providers.
     """
+    mistral_key = MISTRAL_API_KEY or os.getenv("MISTRAL_API_KEY", "")
+    google_key = GOOGLE_API_KEY or os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY", "")
+
+    # Check for missing primary API key
+    if not mistral_key:
+        logger.error("Primary provider configuration error: MISTRAL_API_KEY is missing.")
+        raise HTTPException(
+            status_code=500,
+            detail="AI service configuration error: MISTRAL_API_KEY is not configured.",
+        )
+
     langchain_messages = convert_messages_to_langchain(messages)
 
     # 1. Primary provider: Mistral
     try:
-        if not MISTRAL_API_KEY:
-            raise ValueError("MISTRAL_API_KEY is not configured.")
-
-        mistral_llm = ChatMistralAI(model=MISTRAL_MODEL, mistral_api_key=MISTRAL_API_KEY)
+        mistral_llm = ChatMistralAI(model=MISTRAL_MODEL, mistral_api_key=mistral_key)
         result = mistral_llm.invoke(langchain_messages)
         text_content = extract_text_from_content(result.content)
         return ChatResponse(role="assistant", content=text_content, provider="mistral")
@@ -121,6 +139,16 @@ def generate_chat_response(messages: List[Message]) -> ChatResponse:
         # If error is not a temporary provider / quota / rate limit issue, reject fallback
         if not is_provider_fallback_error(primary_exc):
             logger.error("Primary provider failed with non-fallback error: %s", primary_exc, exc_info=True)
+            status_code = getattr(primary_exc, "status_code", None)
+            if status_code is None and hasattr(primary_exc, "response") and primary_exc.response is not None:
+                status_code = getattr(primary_exc.response, "status_code", None)
+
+            if status_code == 401:
+                raise HTTPException(
+                    status_code=500,
+                    detail="AI service configuration error: Primary provider authentication failed.",
+                )
+
             raise HTTPException(
                 status_code=500,
                 detail="An internal error occurred while processing the chat request.",
@@ -133,13 +161,19 @@ def generate_chat_response(messages: List[Message]) -> ChatResponse:
 
         # 2. Fallback provider: Gemini
         try:
-            if not GOOGLE_API_KEY:
-                raise ValueError("GOOGLE_API_KEY / GEMINI_API_KEY is not configured.")
+            if not google_key:
+                logger.error("Fallback provider configuration error: GOOGLE_API_KEY / GEMINI_API_KEY is missing.")
+                raise HTTPException(
+                    status_code=503,
+                    detail="Both primary (Mistral) and fallback (Gemini) AI providers are currently unavailable. Please try again later.",
+                )
 
-            gemini_llm = ChatGoogleGenerativeAI(model=GEMINI_MODEL, google_api_key=GOOGLE_API_KEY)
+            gemini_llm = ChatGoogleGenerativeAI(model=GEMINI_MODEL, google_api_key=google_key)
             result = gemini_llm.invoke(langchain_messages)
             text_content = extract_text_from_content(result.content)
             return ChatResponse(role="assistant", content=text_content, provider="gemini")
+        except HTTPException as http_exc:
+            raise http_exc
         except Exception as fallback_exc:
             logger.error(
                 "Fallback provider (Gemini) also failed: %s",
