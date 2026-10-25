@@ -12,6 +12,51 @@ In Phase 2, the application gains **server-side persistence**, **session lifecyc
 - Multi-turn conversation context is restored directly from PostgreSQL when generating AI responses.
 - The dual-provider architecture (**Mistral AI** primary with automatic failover to **Google Gemini**) is fully preserved, with provider attribution tracked per message.
 
+```mermaid
+flowchart TD
+    subgraph Client ["Frontend (Next.js 16 + React 19)"]
+        UI["Chat UI (ChatContainer)"]
+        Sidebar["ChatSidebar (Sessions & Pins)"]
+        Hook["useChat Hook (State & Optimistic Updates)"]
+        Axios["Axios API Client (lib/api.ts)"]
+
+        UI <--> Hook
+        Sidebar <--> Hook
+        Hook --> Axios
+    end
+
+    subgraph Backend ["Backend (FastAPI)"]
+        RouterChat["POST /api/chat"]
+        RouterConv["CRUD /api/conversations"]
+        ORM["SQLAlchemy 2.x Session Manager"]
+        LLMService["LLM Service (Provider Orchestration)"]
+
+        RouterChat --> ORM
+        RouterChat --> LLMService
+        RouterConv --> ORM
+    end
+
+    subgraph Database ["Cloud Database (Neon PostgreSQL)"]
+        Postgres[("PostgreSQL Database")]
+        TConv["conversations Table"]
+        TMsg["messages Table (ON DELETE CASCADE)"]
+
+        Postgres --- TConv
+        TConv --- TMsg
+    end
+
+    subgraph AI ["AI Services (LangChain)"]
+        Mistral["Primary LLM: Mistral AI (open-mistral-7b)"]
+        Gemini["Fallback LLM: Google Gemini (gemini-3.5-flash-lite)"]
+    end
+
+    Axios <-->|REST HTTP JSON| RouterChat
+    Axios <-->|REST HTTP JSON| RouterConv
+    ORM <-->|psycopg2 Connection Pool| Postgres
+    LLMService -->|Primary Call| Mistral
+    LLMService -.->|Automatic Failover on 429/5xx| Gemini
+```
+
 ---
 
 ## 2. Objectives and Implemented Features
@@ -278,6 +323,36 @@ Encapsulates all client-side business logic and state:
 - Integrates `ChatSidebar`, `ChatHeader`, `ChatMessages`, and `ChatInput`.
 - Passes the active conversation title to `ChatHeader` so the header displays the session name dynamically.
 
+### 6.5 Frontend State Machine and Lifecycle Diagram
+
+```mermaid
+flowchart TD
+    subgraph UserActions ["User Trigger"]
+        T1["Click 'New Chat'"]
+        T2["Click Saved Chat in Sidebar"]
+        T3["Type & Send Message"]
+        T4["Click Pin Icon"]
+        T5["Edit Title via Inline Form"]
+        T6["Click Delete Icon"]
+    end
+
+    subgraph StateMachine ["useChat Hook State Transitions"]
+        S1["handleNewChat()<br/>currentConversationId = null<br/>messages = []"]
+        S2["selectConversation(id)<br/>fetchConversation(id)<br/>setMessages(detail.messages)<br/>currentConversationId = id"]
+        S3["sendMessage()<br/>Optimistic append user message<br/>POST /api/chat<br/>Append assistant reply<br/>Refresh conversations list"]
+        S4["togglePin(id)<br/>Optimistic pinned toggle<br/>PATCH /api/conversations/id/pin<br/>Re-sort pinned first"]
+        S5["renameConversation(id, title)<br/>Optimistic title update<br/>PATCH /api/conversations/id<br/>Update title in DB"]
+        S6["deleteConversation(id)<br/>Optimistic remove from list<br/>DELETE /api/conversations/id<br/>Reset active chat if open"]
+    end
+
+    T1 --> S1
+    T2 --> S2
+    T3 --> S3
+    T4 --> S4
+    T5 --> S5
+    T6 --> S6
+```
+
 ---
 
 ## 7. Chat Persistence and Context Restoration
@@ -304,9 +379,74 @@ When a user sends a follow-up message:
 4. The LLM receives the complete prior conversation context, allowing it to remember previously stated facts, instructions, or codes.
 5. The assistant reply is written to PostgreSQL, keeping the thread intact for future turns.
 
+### 7.3 Context Restoration Visual Flowchart
+
+```mermaid
+flowchart LR
+    subgraph Turn1 ["Turn 1: Initial Context"]
+        U1["User: 'My code is PHOENIX-99'"] --> A1["AI: 'Understood, code recorded.'"]
+    end
+
+    subgraph Postgres ["Neon PostgreSQL Persistence"]
+        DB1[("messages table<br/>Turn 1 Stored")]
+        Turn1 -->|Saved to DB| DB1
+    end
+
+    subgraph Turn2 ["Turn 2: Follow-up Recall"]
+        U2["User: 'What was my code?'"]
+        DB1 -->|Retrieve Chronological History| Context["Reconstructed LLM Context:<br/>1. HumanMessage: 'My code is PHOENIX-99'<br/>2. AIMessage: 'Understood, code recorded.'<br/>3. HumanMessage: 'What was my code?'"]
+        U2 --> Context
+        Context --> LLM["Mistral AI (or Gemini Fallback)"]
+        LLM --> A2["AI Reply: 'Your code is PHOENIX-99'"]
+        A2 -->|Persist Turn 2| DB1
+    end
+```
+
 ---
 
 ## 8. Complete Application Workflow Diagram
+
+### 8.1 Backend Chat Completion Flowchart
+
+```mermaid
+flowchart TD
+    Start([User sends chat turn]) --> Input["useChat Hook: Optimistic UI update"]
+    Input --> Request["Axios: POST /api/chat"]
+    Request --> CheckSession{"Is conversation_id provided?"}
+
+    CheckSession -->|No| CreateSession["Create new Conversation in DB<br/>Auto-generate title from prompt<br/>db.flush to assign UUID"]
+    CheckSession -->|Yes| ValidateSession{"Does Conversation exist?"}
+
+    ValidateSession -->|No| Return404["Raise HTTP 404 Not Found"]
+    ValidateSession -->|Yes| LoadSession["Load Conversation from DB"]
+
+    CreateSession --> FetchHistory["Fetch existing messages<br/>ORDER BY created_at ASC"]
+    LoadSession --> FetchHistory
+
+    FetchHistory --> RebuildContext["Reconstruct LLM Context<br/>DB History + Latest User Message"]
+    
+    RebuildContext --> CallMistral["Primary LLM: Invoke Mistral AI"]
+    
+    CallMistral --> CheckMistral{"Mistral succeeded?"}
+    
+    CheckMistral -->|Yes| ExtractMistral["Extract response text<br/>provider = 'mistral'"]
+    CheckMistral -->|No: 429 / Quota / 5xx / Timeout| Fallback["Fallback Triggered: Invoke Google Gemini"]
+    
+    Fallback --> CheckGemini{"Gemini succeeded?"}
+    CheckGemini -->|Yes| ExtractGemini["Extract response text<br/>provider = 'gemini'"]
+    CheckGemini -->|No| ErrorHandler["db.rollback<br/>Raise HTTP 503 Service Unavailable"]
+
+    ExtractMistral --> AtomicSave["Safe Transaction Phase:<br/>1. Insert User Message<br/>2. Insert Assistant Reply<br/>3. Update conversation.updated_at"]
+    ExtractGemini --> AtomicSave
+
+    AtomicSave --> CommitDB["Execute db.commit"]
+    CommitDB --> Return200["Return HTTP 200 OK<br/>conversation_id, role, content, provider"]
+    
+    Return200 --> ClientUpdate["Client: Append Assistant message to UI<br/>Bind conversation_id<br/>Refresh conversations list"]
+    ClientUpdate --> End([Chat UI updated & messages persisted])
+```
+
+### 8.2 End-to-End Sequence Workflow
 
 ```mermaid
 sequenceDiagram
@@ -337,10 +477,10 @@ sequenceDiagram
     
     alt Primary Provider: Mistral AI
         Backend->>LLM: ChatMistralAI.invoke(context)
-        LLM-->>Backend: Success response + provider="mistral"
+        LLM-->>Backend: Success response + provider = mistral
     else Fallback: Google Gemini (on quota/rate limit/outage)
         Backend->>LLM: ChatGoogleGenerativeAI.invoke(context)
-        LLM-->>Backend: Success response + provider="gemini"
+        LLM-->>Backend: Success response + provider = gemini
     end
     
     Backend->>DB: Insert latest User Message
@@ -364,23 +504,23 @@ sequenceDiagram
 
 ```mermaid
 erDiagram
-    CONVERSATIONS ||--o{ MESSAGES : "has many"
+    CONVERSATIONS ||--o{ MESSAGES : contains
 
     CONVERSATIONS {
-        VARCHAR_36 id PK "UUID unique identifier"
-        VARCHAR_255 title "Descriptive title of session"
-        BOOLEAN pinned "Pinned status flag"
-        TIMESTAMP created_at "Creation timestamp (UTC)"
-        TIMESTAMP updated_at "Last updated timestamp (UTC)"
+        string id PK "UUID unique identifier"
+        string title "Descriptive title of session"
+        boolean pinned "Priority pin indicator"
+        timestamp created_at "Creation timestamp in UTC"
+        timestamp updated_at "Last modification timestamp in UTC"
     }
 
     MESSAGES {
-        VARCHAR_36 id PK "UUID unique identifier"
-        VARCHAR_36 conversation_id FK "References conversations(id) ON DELETE CASCADE"
-        VARCHAR_20 role "'user' or 'assistant'"
-        TEXT content "Message body text"
-        VARCHAR_50 provider "'mistral', 'gemini', or NULL"
-        TIMESTAMP created_at "Creation timestamp (UTC)"
+        string id PK "UUID unique identifier"
+        string conversation_id FK "References conversations(id) ON DELETE CASCADE"
+        string role "user or assistant"
+        text content "Message body text"
+        string provider "mistral, gemini, or null"
+        timestamp created_at "Creation timestamp in UTC"
     }
 ```
 
