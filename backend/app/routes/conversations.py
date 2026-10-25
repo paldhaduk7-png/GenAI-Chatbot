@@ -115,6 +115,16 @@ def toggle_conversation_pin(
             detail=f"Conversation with id '{conversation_id}' was not found.",
         )
 
+    if not conversation.pinned:
+        pinned_count = (
+            db.query(Conversation).filter(Conversation.pinned.is_(True)).count()
+        )
+        if pinned_count >= 7:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="You can pin up to 7 conversations. Please unpin one first.",
+            )
+
     conversation.pinned = not conversation.pinned
     conversation.updated_at = datetime.now(timezone.utc)
     db.commit()
