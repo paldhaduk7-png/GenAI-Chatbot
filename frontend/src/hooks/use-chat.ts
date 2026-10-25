@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import axios from "axios";
 import { toast } from "sonner";
 import { Message, ApiChatMessage, Conversation } from "@/types/chat";
+import { useAuth } from "@/hooks/use-auth";
 import {
   sendChatMessage,
   fetchConversations,
@@ -25,6 +26,8 @@ import {
  * - Mobile sidebar visibility state.
  */
 export function useChat() {
+  const { isAuthenticated, user } = useAuth();
+
   // Active conversation history
   const [messages, setMessages] = useState<Message[]>([]);
 
@@ -58,10 +61,15 @@ export function useChat() {
   const requestIdRef = useRef<number>(0);
 
   /**
-   * Fetches all conversations from PostgreSQL.
+   * Fetches all conversations from PostgreSQL for the authenticated user.
    * Guarantees conversations state is always an array.
    */
   const loadConversations = useCallback(async () => {
+    if (!isAuthenticated) {
+      setConversations([]);
+      return;
+    }
+
     try {
       setIsLoadingConversations(true);
       const list = await fetchConversations();
@@ -72,12 +80,18 @@ export function useChat() {
     } finally {
       setIsLoadingConversations(false);
     }
-  }, []);
+  }, [isAuthenticated]);
 
-  // Load conversations on component mount
+  // Load conversations on component mount or when auth state changes
   useEffect(() => {
-    loadConversations();
-  }, [loadConversations]);
+    if (isAuthenticated) {
+      loadConversations();
+    } else {
+      setConversations([]);
+      setMessages([]);
+      setCurrentConversationId(null);
+    }
+  }, [loadConversations, isAuthenticated, user]);
 
   /**
    * Resets the active chat session:
