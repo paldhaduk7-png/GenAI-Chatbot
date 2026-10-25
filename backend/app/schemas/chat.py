@@ -1,4 +1,4 @@
-from typing import List, Literal
+from typing import List, Literal, Optional
 from pydantic import BaseModel, Field, field_validator
 
 
@@ -16,10 +16,16 @@ class Message(BaseModel):
 
 
 class ChatRequest(BaseModel):
+    conversation_id: Optional[str] = Field(
+        None, description="Optional ID of an existing conversation session"
+    )
     messages: List[Message] = Field(..., min_length=1, description="Conversation history messages")
 
 
 class ChatResponse(BaseModel):
+    conversation_id: Optional[str] = Field(
+        None, description="ID of the conversation session"
+    )
     role: str = "assistant"
     content: str
     provider: str
