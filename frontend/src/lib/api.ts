@@ -61,10 +61,16 @@ export async function sendChatMessage(
 
 /**
  * Fetches all saved conversations ordered by updated_at (newest first).
+ * Always validates and returns an array to prevent non-iterable runtime errors.
  */
 export async function fetchConversations(): Promise<Conversation[]> {
-  const response = await apiClient.get<Conversation[]>("/api/conversations");
-  return response.data;
+  try {
+    const response = await apiClient.get<Conversation[]>("/api/conversations");
+    return Array.isArray(response.data) ? response.data : [];
+  } catch (err: unknown) {
+    console.error("fetchConversations API error:", err);
+    return [];
+  }
 }
 
 /**
@@ -76,7 +82,11 @@ export async function fetchConversation(
   const response = await apiClient.get<ConversationDetail>(
     `/api/conversations/${encodeURIComponent(conversationId)}`
   );
-  return response.data;
+  const data = response.data;
+  return {
+    ...data,
+    messages: Array.isArray(data?.messages) ? data.messages : [],
+  };
 }
 
 /**

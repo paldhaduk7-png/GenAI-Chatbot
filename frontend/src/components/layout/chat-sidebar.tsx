@@ -22,7 +22,7 @@ interface ChatSidebarProps {
   onClose: () => void;
   onNewChat: () => void;
   isLoading: boolean;
-  conversations: Conversation[];
+  conversations?: Conversation[];
   currentConversationId: string | null;
   onSelectConversation: (id: string) => void;
   onDeleteConversation: (id: string) => void;
@@ -45,7 +45,7 @@ export function ChatSidebar({
   onClose,
   onNewChat,
   isLoading,
-  conversations,
+  conversations = [],
   currentConversationId,
   onSelectConversation,
   onDeleteConversation,
@@ -95,10 +95,14 @@ export function ChatSidebar({
     onTogglePin(convId);
   };
 
+  const safeConversations = Array.isArray(conversations) ? conversations : [];
+
   // Sort pinned conversations first, then newest updated_at
-  const sortedConversations = [...conversations].sort((a, b) => {
+  const sortedConversations = [...safeConversations].sort((a, b) => {
     if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
-    return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
+    const timeA = a.updated_at ? new Date(a.updated_at).getTime() : 0;
+    const timeB = b.updated_at ? new Date(b.updated_at).getTime() : 0;
+    return timeB - timeA;
   });
 
   return (

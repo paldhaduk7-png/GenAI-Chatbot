@@ -35,7 +35,9 @@ export function ChatContainer() {
     dismissError,
   } = useChat();
 
-  const currentConversation = conversations.find(
+  const safeConversations = Array.isArray(conversations) ? conversations : [];
+
+  const currentConversation = safeConversations.find(
     (c) => c.id === currentConversationId
   );
 
@@ -47,7 +49,7 @@ export function ChatContainer() {
         onClose={() => setIsSidebarOpen(false)}
         onNewChat={handleNewChat}
         isLoading={isLoading}
-        conversations={conversations}
+        conversations={safeConversations}
         currentConversationId={currentConversationId}
         onSelectConversation={selectConversation}
         onDeleteConversation={deleteConversation}

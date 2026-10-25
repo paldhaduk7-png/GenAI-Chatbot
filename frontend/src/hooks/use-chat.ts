@@ -53,14 +53,16 @@ export function useChat() {
 
   /**
    * Fetches all conversations from PostgreSQL.
+   * Guarantees conversations state is always an array.
    */
   const loadConversations = useCallback(async () => {
     try {
       setIsLoadingConversations(true);
       const list = await fetchConversations();
-      setConversations(list);
+      setConversations(Array.isArray(list) ? list : []);
     } catch (err: unknown) {
       console.error("Failed to load conversations:", err);
+      setConversations((prev) => (Array.isArray(prev) ? prev : []));
     } finally {
       setIsLoadingConversations(false);
     }
@@ -145,7 +147,9 @@ export function useChat() {
     async (conversationId: string) => {
       try {
         // Optimistically update conversation list
-        setConversations((prev) => prev.filter((c) => c.id !== conversationId));
+        setConversations((prev) =>
+          Array.isArray(prev) ? prev.filter((c) => c.id !== conversationId) : []
+        );
 
         if (currentConversationId === conversationId) {
           handleNewChat();
@@ -170,9 +174,11 @@ export function useChat() {
       try {
         // Optimistically update pinned state
         setConversations((prev) =>
-          prev.map((c) =>
-            c.id === conversationId ? { ...c, pinned: !c.pinned } : c
-          )
+          Array.isArray(prev)
+            ? prev.map((c) =>
+                c.id === conversationId ? { ...c, pinned: !c.pinned } : c
+              )
+            : []
         );
 
         await toggleConversationPin(conversationId);
@@ -198,9 +204,11 @@ export function useChat() {
       try {
         // Optimistically update title
         setConversations((prev) =>
-          prev.map((c) =>
-            c.id === conversationId ? { ...c, title: trimmed } : c
-          )
+          Array.isArray(prev)
+            ? prev.map((c) =>
+                c.id === conversationId ? { ...c, title: trimmed } : c
+              )
+            : []
         );
 
         await updateConversationTitle(conversationId, trimmed);
