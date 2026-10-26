@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.db import Base, Conversation, Message, engine
+from app.db import Base, Conversation, Document, DocumentChunk, Message, engine
 from app.routes.auth import router as auth_router
 from app.routes.chat import router as chat_router
 from app.routes.conversations import router as conversations_router
