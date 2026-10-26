@@ -10,3 +10,8 @@ psycopg2-binary>=2.9.9
 bcrypt>=4.0.0
 PyJWT[crypto]>=2.8.0
 email-validator>=2.0.0
+pgvector
+pypdf
+langchain-text-splitters
+sentence-transformers
+python-multipart
