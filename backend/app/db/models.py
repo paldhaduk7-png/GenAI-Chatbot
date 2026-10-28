@@ -105,7 +105,6 @@ class Conversation(Base):
         String(36),
         ForeignKey("users.id", ondelete="CASCADE"),
         nullable=True,
-        index=True,
     )
     title: Mapped[str] = mapped_column(
         String(255),
@@ -222,7 +221,6 @@ class Document(Base):
         String(36),
         ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,
-        index=True,
     )
     filename: Mapped[str] = mapped_column(
         String(255),
@@ -291,7 +289,6 @@ class DocumentChunk(Base):
         String(36),
         ForeignKey("documents.id", ondelete="CASCADE"),
         nullable=False,
-        index=True,
     )
     content: Mapped[str] = mapped_column(
         Text,

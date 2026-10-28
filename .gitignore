@@ -19,9 +19,12 @@ venv.bak/
 *.egg-info/
 .installed.cfg
 *.egg
+# Testing
 .pytest_cache/
 .coverage
 htmlcov/
+backend/tests/
+tests/
 
 # Node.js & Frontend (React)
 node_modules/
