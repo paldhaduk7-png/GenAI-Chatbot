@@ -15,6 +15,13 @@ from app.schemas.conversation import (
     ConversationUpdate,
     MessageResponse,
 )
+from app.schemas.chunk import (
+    ChunkData,
+    RetrievedChunk,
+    VectorSearchRequest,
+    VectorSearchResponse,
+)
+from app.schemas.document import DocumentResponse, DocumentUploadResponse
 
 __all__ = [
     "ChatRequest",
@@ -31,4 +38,10 @@ __all__ = [
     "UserOut",
     "Token",
     "TokenData",
+    "DocumentUploadResponse",
+    "DocumentResponse",
+    "ChunkData",
+    "RetrievedChunk",
+    "VectorSearchRequest",
+    "VectorSearchResponse",
 ]
