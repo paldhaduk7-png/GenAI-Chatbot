@@ -10,6 +10,7 @@ import {
   MoreHorizontal,
 } from "lucide-react";
 import { Message } from "@/types/chat";
+import { CitationSources } from "./citation-sources";
 
 interface ChatMessageProps {
   message: Message;
@@ -120,6 +121,11 @@ export function ChatMessage({ message, onRetry }: ChatMessageProps) {
       <div className="max-w-3xl text-sm leading-relaxed text-[#ececec] break-words overflow-hidden">
         {renderFormattedContent(message.content)}
       </div>
+
+      {/* RAG Retrieved Sources & Citations */}
+      {message.sources && message.sources.length > 0 && (
+        <CitationSources sources={message.sources} />
+      )}
 
       {/* Action Toolbar */}
       <div className="flex items-center gap-1 text-zinc-400">
