@@ -28,6 +28,12 @@ from app.services.retrieval_service import (
     search_by_text,
     search_similar_chunks,
 )
+from app.services.rag_prompts import get_rag_prompt_template
+from app.services.rag_service import (
+    build_rag_chain,
+    execute_rag,
+    get_rag_chain,
+)
 from app.services.text_splitter_service import (
     DEFAULT_CHUNK_OVERLAP,
     DEFAULT_CHUNK_SIZE,
@@ -61,4 +67,8 @@ __all__ = [
     "ChunkPersistenceError",
     "search_similar_chunks",
     "search_by_text",
+    "get_rag_prompt_template",
+    "build_rag_chain",
+    "get_rag_chain",
+    "execute_rag",
 ]
