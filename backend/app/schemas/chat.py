@@ -3,7 +3,7 @@ from pydantic import BaseModel, Field, field_validator
 
 
 class Message(BaseModel):
-    role: Literal["user", "assistant"]
+    role: Literal["user", "assistant", "system"]
     content: str = Field(..., min_length=1, description="Text content of the message")
 
     @field_validator("content")

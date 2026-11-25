@@ -22,6 +22,7 @@ from app.schemas.chunk import (
     VectorSearchResponse,
 )
 from app.schemas.document import DocumentResponse, DocumentUploadResponse
+from app.schemas.rag import RAGRequest, RAGResponse, RAGSource
 
 __all__ = [
     "ChatRequest",
@@ -44,4 +45,7 @@ __all__ = [
     "RetrievedChunk",
     "VectorSearchRequest",
     "VectorSearchResponse",
+    "RAGRequest",
+    "RAGResponse",
+    "RAGSource",
 ]
