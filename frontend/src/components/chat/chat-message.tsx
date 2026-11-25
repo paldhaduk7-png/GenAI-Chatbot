@@ -8,7 +8,6 @@ import {
   ThumbsDown,
   RotateCcw,
   MoreHorizontal,
-  X,
 } from "lucide-react";
 import { Message } from "@/types/chat";
 
@@ -91,13 +90,11 @@ function renderFormattedContent(content: string) {
  * - User messages: Right-aligned pill with cyber background and crisp typography.
  * - Assistant messages: Left-aligned clean text with code block and markdown formatting.
  * - Action buttons row (Copy, ThumbsUp, ThumbsDown, Regenerate, More).
- * - "Do you like this personality?" feedback banner.
  */
 export function ChatMessage({ message, onRetry }: ChatMessageProps) {
   const isUser = message.role === "user";
   const [copied, setCopied] = useState(false);
   const [liked, setLiked] = useState<boolean | null>(null);
-  const [showPersonalityFeedback, setShowPersonalityFeedback] = useState(!isUser);
 
   const handleCopy = () => {
     if (navigator.clipboard) {
@@ -175,42 +172,6 @@ export function ChatMessage({ message, onRetry }: ChatMessageProps) {
           <MoreHorizontal className="h-3.5 w-3.5" />
         </button>
       </div>
-
-      {/* Personality Feedback Banner */}
-      {showPersonalityFeedback && (
-        <div className="flex items-center gap-3 w-fit rounded-lg border border-zinc-700/80 bg-[#1e1e1e] px-3.5 py-1.5 text-xs text-zinc-300 shadow-sm mt-1">
-          <span>Do you like this personality?</span>
-          <div className="flex items-center gap-1.5">
-            <button
-              onClick={() => {
-                setLiked(true);
-                setShowPersonalityFeedback(false);
-              }}
-              className="rounded p-1 hover:bg-zinc-700 hover:text-white transition cursor-pointer"
-              title="Thumbs up"
-            >
-              <ThumbsUp className="h-3.5 w-3.5" />
-            </button>
-            <button
-              onClick={() => {
-                setLiked(false);
-                setShowPersonalityFeedback(false);
-              }}
-              className="rounded p-1 hover:bg-zinc-700 hover:text-white transition cursor-pointer"
-              title="Thumbs down"
-            >
-              <ThumbsDown className="h-3.5 w-3.5" />
-            </button>
-            <button
-              onClick={() => setShowPersonalityFeedback(false)}
-              className="rounded p-1 hover:bg-zinc-700 hover:text-zinc-400 text-zinc-500 transition ml-1 cursor-pointer"
-              title="Dismiss"
-            >
-              <X className="h-3 w-3" />
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
