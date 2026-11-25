@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import axios from "axios";
 import { toast } from "sonner";
 import { Message, ApiChatMessage, Conversation } from "@/types/chat";
+import { DocumentItem } from "@/types/document";
 import { useAuth } from "@/hooks/use-auth";
 import {
   sendChatMessage,
@@ -33,6 +34,9 @@ export function useChat() {
 
   // Current active conversation ID (null indicates an unsaved new chat)
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
+
+  // Active selected document for RAG chat scoping (null indicates normal chat)
+  const [selectedDocument, setSelectedDocument] = useState<DocumentItem | null>(null);
 
   // List of all user conversations retrieved from PostgreSQL
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -90,23 +94,32 @@ export function useChat() {
       setConversations([]);
       setMessages([]);
       setCurrentConversationId(null);
+      setSelectedDocument(null);
     }
   }, [loadConversations, isAuthenticated, user]);
 
   /**
    * Resets the active chat session:
-   * Clears messages, active conversation ID, input text, errors, and closes mobile sidebar.
+   * Clears messages, active conversation ID, input text, errors, selected document, and closes mobile sidebar.
    */
   const handleNewChat = useCallback(() => {
     // Invalidate any in-flight async request
     requestIdRef.current += 1;
     setCurrentConversationId(null);
+    setSelectedDocument(null);
     setMessages([]);
     setInput("");
     setErrorMessage(null);
     if (typeof window !== "undefined" && window.innerWidth < 768) {
       setIsSidebarOpen(false);
     }
+  }, []);
+
+  /**
+   * Deselects the active document, returning the chat to normal scope.
+   */
+  const deselectDocument = useCallback(() => {
+    setSelectedDocument(null);
   }, []);
 
   /**
@@ -129,6 +142,9 @@ export function useChat() {
         return;
       }
 
+      // Reset selected document when navigating to a different conversation
+      setSelectedDocument(null);
+
       const reqId = ++requestIdRef.current;
       setErrorMessage(null);
       setIsLoading(true);
@@ -149,6 +165,8 @@ export function useChat() {
           role: m.role,
           content: m.content,
           provider: m.provider,
+          sources: [],
+          has_sufficient_context: null,
         }));
 
         setMessages(loadedMessages);
@@ -275,14 +293,22 @@ export function useChat() {
 
   /**
    * Centralized API Request Executor:
-   * Dispatches the chat payload to the backend, binds conversation_id,
-   * appends the AI reply, and updates conversation sessions in PostgreSQL.
+   * Dispatches the chat payload to the backend, binds conversation_id and optional RAG scope,
+   * appends the AI reply with provider and sources metadata, and updates conversation sessions in PostgreSQL.
    */
   const executeChatRequest = useCallback(
     async (conversation: Message[]) => {
       const reqId = ++requestIdRef.current;
       setErrorMessage(null);
       setIsLoading(true);
+
+      // Snapshot the selected document at request start so mid-flight UI clicks do not mutate active payload
+      const targetDoc =
+        selectedDocument && selectedDocument.status === "completed"
+          ? selectedDocument
+          : null;
+      const targetDocId = targetDoc?.id || null;
+      const useRag = Boolean(targetDocId);
 
       try {
         // Map to backend schema: { role: "user" | "assistant", content: string }
@@ -291,18 +317,26 @@ export function useChat() {
           content: msg.content,
         }));
 
-        // Send request with active conversation ID (or null for new session)
-        const response = await sendChatMessage(apiPayload, currentConversationId);
+        // Send request with active conversation ID (or null for new session) and optional RAG parameters
+        const response = await sendChatMessage(
+          apiPayload,
+          currentConversationId,
+          targetDocId,
+          useRag
+        );
 
         // Guard against stale response if user switched chats while generating
         if (requestIdRef.current !== reqId) return;
 
-        // Add assistant response with provider badge metadata
+        // Add assistant response with provider badge and RAG sources metadata
         const assistantMessage: Message = {
           id: `assistant-${Date.now()}`,
           role: "assistant",
           content: response.content,
           provider: response.provider,
+          sources: response.sources || [],
+          has_sufficient_context: response.has_sufficient_context ?? null,
+          document_id: targetDocId,
         };
 
         setMessages((prev) => [...prev, assistantMessage]);
@@ -348,9 +382,15 @@ export function useChat() {
                   ? detail
                   : "The request could not be processed due to invalid message format.";
             } else if (status === 404) {
-              userFriendlyError =
-                "The current conversation was not found in the database. Starting a new chat session.";
-              handleNewChat();
+              if (typeof detail === "string" && detail.toLowerCase().includes("document")) {
+                userFriendlyError = detail;
+                // Deselect invalid or deleted document
+                setSelectedDocument(null);
+              } else {
+                userFriendlyError =
+                  "The current conversation was not found in the database. Starting a new chat session.";
+                handleNewChat();
+              }
             } else {
               userFriendlyError =
                 typeof detail === "string"
@@ -370,7 +410,7 @@ export function useChat() {
         }
       }
     },
-    [currentConversationId, handleNewChat, loadConversations]
+    [currentConversationId, selectedDocument, handleNewChat, loadConversations]
   );
 
   /**
@@ -384,10 +424,16 @@ export function useChat() {
       const trimmedText = input.trim();
       if (!trimmedText || isLoading) return;
 
+      const activeDocId =
+        selectedDocument && selectedDocument.status === "completed"
+          ? selectedDocument.id
+          : null;
+
       const newUserMessage: Message = {
         id: `user-${Date.now()}`,
         role: "user",
         content: trimmedText,
+        document_id: activeDocId,
       };
 
       const updatedMessages = [...messages, newUserMessage];
@@ -396,7 +442,7 @@ export function useChat() {
 
       executeChatRequest(updatedMessages);
     },
-    [input, isLoading, messages, executeChatRequest]
+    [input, isLoading, messages, selectedDocument, executeChatRequest]
   );
 
   /**
@@ -428,5 +474,8 @@ export function useChat() {
     togglePin,
     renameConversation,
     dismissError,
+    selectedDocument,
+    setSelectedDocument,
+    deselectDocument,
   };
 }
