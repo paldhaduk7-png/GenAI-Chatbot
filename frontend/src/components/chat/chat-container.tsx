@@ -3,9 +3,11 @@
 import React, { useState } from "react";
 import { useChat } from "@/hooks/use-chat";
 import { useDocuments } from "@/hooks/use-documents";
+import { DocumentItem } from "@/types/document";
 import { ChatSidebar } from "@/components/layout/chat-sidebar";
 import { ChatHeader } from "@/components/layout/chat-header";
 import { DocumentModal } from "@/components/documents/document-modal";
+import { DocumentSelectorModal } from "@/components/documents/document-selector-modal";
 import { ChatMessages } from "./chat-messages";
 import { ChatInput } from "./chat-input";
 
@@ -13,8 +15,9 @@ import { ChatInput } from "./chat-input";
  * ChatContainer Component:
  * Composes the primary chat interface:
  * - Integrates the `useChat` custom hook for state & backend communication.
- * - Integrates `useDocuments` and `DocumentModal` for PDF management and chat scoping.
- * - Manages the layout between the navigation sidebar and the chat conversation workspace.
+ * - Integrates `useDocuments` for PDF management, direct upload, and chat scoping.
+ * - Supports quick '+' menu workflow (Direct PDF Upload & Quick Document Selector).
+ * - Manages the layout between navigation sidebar and chat workspace.
  */
 export function ChatContainer() {
   const {
@@ -43,6 +46,23 @@ export function ChatContainer() {
 
   const documentsHook = useDocuments();
   const [isDocumentModalOpen, setIsDocumentModalOpen] = useState(false);
+  const [isSelectorOpen, setIsSelectorOpen] = useState(false);
+
+  // Directly upload a PDF from the chat input '+' menu and auto-attach to current chat
+  const handleUploadFromInput = async (file: File) => {
+    const res = await documentsHook.upload(file);
+    if (res && res.status === "completed") {
+      const newDoc: DocumentItem = {
+        id: res.document_id || res.id || "",
+        filename: res.filename,
+        status: res.status,
+        created_at: new Date().toISOString(),
+        page_count: res.page_count,
+        chunk_count: res.chunk_count,
+      };
+      setSelectedDocument(newDoc);
+    }
+  };
 
   const safeConversations = Array.isArray(conversations) ? conversations : [];
 
@@ -107,7 +127,10 @@ export function ChatContainer() {
                 isCentered={true}
                 selectedDocument={selectedDocument}
                 onDeselectDocument={deselectDocument}
-                onOpenDocumentModal={() => setIsDocumentModalOpen(true)}
+                onOpenDocumentSelector={() => setIsSelectorOpen(true)}
+                onUploadFile={handleUploadFromInput}
+                isUploadingDoc={documentsHook.isUploading}
+                documentCount={documentsHook.documents.length}
               />
 
               {/* Error banner if first submission failed */}
@@ -146,13 +169,28 @@ export function ChatContainer() {
               isCentered={false}
               selectedDocument={selectedDocument}
               onDeselectDocument={deselectDocument}
-              onOpenDocumentModal={() => setIsDocumentModalOpen(true)}
+              onOpenDocumentSelector={() => setIsSelectorOpen(true)}
+              onUploadFile={handleUploadFromInput}
+              isUploadingDoc={documentsHook.isUploading}
+              documentCount={documentsHook.documents.length}
             />
           </div>
         )}
       </main>
 
-      {/* Document Management & Selection Modal */}
+      {/* Quick Document Selector Modal (from '+' menu) */}
+      <DocumentSelectorModal
+        isOpen={isSelectorOpen}
+        onClose={() => setIsSelectorOpen(false)}
+        documents={documentsHook.documents}
+        isLoading={documentsHook.isLoading}
+        selectedDocument={selectedDocument}
+        onSelectDocument={setSelectedDocument}
+        onTriggerUpload={() => setIsDocumentModalOpen(true)}
+        onOpenFullManagement={() => setIsDocumentModalOpen(true)}
+      />
+
+      {/* Full Document Management & Deletion Modal (from Sidebar or Full link) */}
       <DocumentModal
         isOpen={isDocumentModalOpen}
         onClose={() => setIsDocumentModalOpen(false)}
