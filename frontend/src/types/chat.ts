@@ -4,17 +4,34 @@
  */
 
 /**
+ * Preserved source citation metadata for a retrieved document chunk.
+ */
+export interface RAGSource {
+  document_id: string;
+  document_filename: string;
+  page_number?: number | null;
+  chunk_id: string;
+  similarity_score?: number | null;
+}
+
+/**
  * Represents a single message in the UI state.
  * - `id`: Unique identifier for list keys.
  * - `role`: "user" or "assistant" (must match backend expectation).
  * - `content`: Text message content.
  * - `provider`: Tracks whether Mistral (primary) or Gemini (fallback) answered.
+ * - `sources`: Source chunk citations returned from RAG execution.
+ * - `has_sufficient_context`: Flag indicating if relevant chunks were retrieved.
+ * - `document_id`: Optional ID of the document queried for this message.
  */
 export interface Message {
   id: string;
   role: "user" | "assistant";
   content: string;
   provider?: "mistral" | "gemini";
+  sources?: RAGSource[];
+  has_sufficient_context?: boolean | null;
+  document_id?: string | null;
 }
 
 /**
@@ -31,6 +48,8 @@ export interface ApiChatMessage {
 export interface ChatApiRequest {
   conversation_id?: string | null;
   messages: ApiChatMessage[];
+  document_id?: string | null;
+  use_rag?: boolean;
 }
 
 /**
@@ -41,6 +60,8 @@ export interface ChatApiResponse {
   role: "assistant";
   content: string;
   provider: "mistral" | "gemini";
+  sources?: RAGSource[];
+  has_sufficient_context?: boolean | null;
 }
 
 /**

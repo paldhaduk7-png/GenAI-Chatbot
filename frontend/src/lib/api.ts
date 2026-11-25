@@ -6,6 +6,7 @@ import {
   Conversation,
   ConversationDetail,
   ConversationDeleteResponse,
+  RAGSource,
 } from "@/types/chat";
 import {
   AuthTokenResponse,
@@ -13,6 +14,11 @@ import {
   RegisterRequest,
   User,
 } from "@/types/auth";
+import {
+  DocumentItem,
+  DocumentUploadResponse,
+  DocumentDeleteResponse,
+} from "@/types/document";
 
 // Re-export for convenience
 export type {
@@ -26,6 +32,10 @@ export type {
   LoginRequest,
   RegisterRequest,
   User,
+  DocumentItem,
+  DocumentUploadResponse,
+  DocumentDeleteResponse,
+  RAGSource,
 };
 
 /**
@@ -192,15 +202,22 @@ export async function getCurrentUser(): Promise<User> {
  * 
  * @param messages Ordered list of user and assistant messages.
  * @param conversationId Optional existing conversation session UUID.
- * @returns Assistant reply with conversation_id and provider metadata.
+ * @param documentId Optional UUID of an uploaded document to query via RAG.
+ * @param useRag Whether RAG grounded retrieval is enabled on the document.
+ * @returns Assistant reply with conversation_id, provider metadata, and RAG citations.
  */
 export async function sendChatMessage(
   messages: ApiChatMessage[],
-  conversationId?: string | null
+  conversationId?: string | null,
+  documentId?: string | null,
+  useRag?: boolean
 ): Promise<ChatApiResponse> {
+  const isRagActive = Boolean(useRag && documentId);
+
   const payload: ChatApiRequest = {
     messages,
     ...(conversationId ? { conversation_id: conversationId } : {}),
+    ...(isRagActive ? { document_id: documentId, use_rag: true } : {}),
   };
 
   const response = await apiClient.post<ChatApiResponse>("/api/chat", payload);
@@ -291,3 +308,58 @@ export async function deleteConversation(
   );
   return response.data;
 }
+
+/* ============================================================================
+ * Document Management API Endpoints
+ * ============================================================================ */
+
+/**
+ * Fetches all uploaded documents belonging to the authenticated user.
+ * GET /api/documents
+ */
+export async function fetchDocuments(): Promise<DocumentItem[]> {
+  try {
+    const response = await apiClient.get<DocumentItem[]>("/api/documents");
+    return Array.isArray(response.data) ? response.data : [];
+  } catch (err: unknown) {
+    if (axios.isAxiosError(err) && err.response?.status === 401) {
+      return [];
+    }
+    console.error("fetchDocuments API error:", err);
+    return [];
+  }
+}
+
+/**
+ * Uploads a PDF document to FastAPI for processing, chunking, and embedding.
+ * POST /api/documents/upload (multipart/form-data)
+ */
+export async function uploadDocument(file: File): Promise<DocumentUploadResponse> {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const response = await apiClient.post<DocumentUploadResponse>(
+    "/api/documents/upload",
+    formData,
+    {
+      headers: {
+        "Content-Type": "multipart/form-data",
+      },
+    }
+  );
+  return response.data;
+}
+
+/**
+ * Deletes an uploaded document and its chunks from PostgreSQL & Cloudinary.
+ * DELETE /api/documents/{id}
+ */
+export async function deleteDocument(
+  documentId: string
+): Promise<DocumentDeleteResponse> {
+  const response = await apiClient.delete<DocumentDeleteResponse>(
+    `/api/documents/${encodeURIComponent(documentId)}`
+  );
+  return response.data;
+}
+
