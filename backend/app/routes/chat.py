@@ -7,10 +7,11 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_current_user
-from app.db.models import Conversation, Message as DbMessage, User
+from app.db.models import Conversation, Document, Message as DbMessage, User
 from app.db.session import get_db
 from app.schemas.chat import ChatRequest, ChatResponse, Message
 from app.services.llm_service import generate_chat_response
+from app.services.rag_service import execute_rag
 
 logger = logging.getLogger(__name__)
 
@@ -78,9 +79,8 @@ def chat_endpoint(
         ).all()
     )
 
-    # 4. Formulate LLM context:
-    # Existing chronological history from DB + new latest user message
-    llm_context: List[Message] = [
+    # 4. Formulate preceding conversation history:
+    history_context: List[Message] = [
         Message(role=m.role, content=m.content) for m in existing_db_messages
     ]
 
@@ -88,16 +88,52 @@ def chat_endpoint(
     if not existing_db_messages and len(request.messages) > 1:
         for prev_msg in request.messages:
             if prev_msg is not latest_user_message:
-                llm_context.append(Message(role=prev_msg.role, content=prev_msg.content))
+                history_context.append(Message(role=prev_msg.role, content=prev_msg.content))
 
-    llm_context.append(Message(role="user", content=latest_user_message.content))
+    # 5. Check if RAG is explicitly enabled with a selected document
+    is_rag_active = bool(request.use_rag and request.document_id)
 
-    # 5. Call LLM service safely (without committing user message prematurely)
-    try:
-        llm_response = generate_chat_response(llm_context)
-    except Exception as exc:
-        db.rollback()
-        raise exc
+    if is_rag_active:
+        # Validate that selected document exists and belongs to current_user
+        doc_stmt = select(Document).where(
+            Document.id == request.document_id,
+            Document.user_id == current_user.id,
+        )
+        document = db.scalar(doc_stmt)
+        if not document:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Document with id '{request.document_id}' was not found.",
+            )
+
+        try:
+            rag_result = execute_rag(
+                db=db,
+                user_id=current_user.id,
+                question=latest_user_message.content,
+                document_id=request.document_id,
+                chat_history=history_context,
+            )
+            answer_content = rag_result.answer
+            provider_name = rag_result.provider
+            sources = rag_result.sources
+            has_sufficient_context = rag_result.has_sufficient_context
+        except Exception as exc:
+            db.rollback()
+            raise exc
+    else:
+        # Normal chat flow: append latest user message to full chronological context
+        llm_context: List[Message] = list(history_context)
+        llm_context.append(Message(role="user", content=latest_user_message.content))
+        try:
+            llm_response = generate_chat_response(llm_context)
+            answer_content = llm_response.content
+            provider_name = llm_response.provider
+            sources = []
+            has_sufficient_context = None
+        except Exception as exc:
+            db.rollback()
+            raise exc
 
     # 6. Save messages to DB atomically upon successful LLM response
     # If DB was empty and earlier history was passed, persist it once
@@ -126,8 +162,8 @@ def chat_endpoint(
         DbMessage(
             conversation_id=conversation.id,
             role="assistant",
-            content=llm_response.content,
-            provider=llm_response.provider,
+            content=answer_content,
+            provider=provider_name,
         )
     )
 
@@ -138,6 +174,8 @@ def chat_endpoint(
     return ChatResponse(
         conversation_id=conversation.id,
         role="assistant",
-        content=llm_response.content,
-        provider=llm_response.provider,
+        content=answer_content,
+        provider=provider_name,
+        sources=sources,
+        has_sufficient_context=has_sufficient_context,
     )
