@@ -1,9 +1,11 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import { useChat } from "@/hooks/use-chat";
+import { useDocuments } from "@/hooks/use-documents";
 import { ChatSidebar } from "@/components/layout/chat-sidebar";
 import { ChatHeader } from "@/components/layout/chat-header";
+import { DocumentModal } from "@/components/documents/document-modal";
 import { ChatMessages } from "./chat-messages";
 import { ChatInput } from "./chat-input";
 
@@ -11,6 +13,7 @@ import { ChatInput } from "./chat-input";
  * ChatContainer Component:
  * Composes the primary chat interface:
  * - Integrates the `useChat` custom hook for state & backend communication.
+ * - Integrates `useDocuments` and `DocumentModal` for PDF management and chat scoping.
  * - Manages the layout between the navigation sidebar and the chat conversation workspace.
  */
 export function ChatContainer() {
@@ -24,7 +27,6 @@ export function ChatContainer() {
     isLoading,
     errorMessage,
     isSidebarOpen,
-    setIsSidebarOpen,
     toggleSidebar,
     sendMessage,
     handleRetry,
@@ -34,7 +36,13 @@ export function ChatContainer() {
     togglePin,
     renameConversation,
     dismissError,
+    selectedDocument,
+    setSelectedDocument,
+    deselectDocument,
   } = useChat();
+
+  const documentsHook = useDocuments();
+  const [isDocumentModalOpen, setIsDocumentModalOpen] = useState(false);
 
   const safeConversations = Array.isArray(conversations) ? conversations : [];
 
@@ -67,6 +75,8 @@ export function ChatContainer() {
         onTogglePin={togglePin}
         onRenameConversation={renameConversation}
         isLoadingConversations={isLoadingConversations}
+        onOpenDocumentModal={() => setIsDocumentModalOpen(true)}
+        documentCount={documentsHook.documents.length}
       />
 
       {/* Main Conversation Workspace */}
@@ -95,6 +105,9 @@ export function ChatContainer() {
                 onChangeInput={setInput}
                 onSubmit={sendMessage}
                 isCentered={true}
+                selectedDocument={selectedDocument}
+                onDeselectDocument={deselectDocument}
+                onOpenDocumentModal={() => setIsDocumentModalOpen(true)}
               />
 
               {/* Error banner if first submission failed */}
@@ -131,10 +144,22 @@ export function ChatContainer() {
               onChangeInput={setInput}
               onSubmit={sendMessage}
               isCentered={false}
+              selectedDocument={selectedDocument}
+              onDeselectDocument={deselectDocument}
+              onOpenDocumentModal={() => setIsDocumentModalOpen(true)}
             />
           </div>
         )}
       </main>
+
+      {/* Document Management & Selection Modal */}
+      <DocumentModal
+        isOpen={isDocumentModalOpen}
+        onClose={() => setIsDocumentModalOpen(false)}
+        selectedDocument={selectedDocument}
+        onSelectDocument={setSelectedDocument}
+        documentsHook={documentsHook}
+      />
     </div>
   );
 }

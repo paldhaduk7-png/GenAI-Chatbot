@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useRef, useEffect } from "react";
-import { Plus, ArrowUp, Loader2 } from "lucide-react";
+import { Plus, ArrowUp, Loader2, FileText, X } from "lucide-react";
+import { DocumentItem } from "@/types/document";
 
 interface ChatInputProps {
   input: string;
@@ -9,6 +10,9 @@ interface ChatInputProps {
   onChangeInput: (value: string) => void;
   onSubmit: (e?: React.FormEvent) => void;
   isCentered?: boolean;
+  selectedDocument?: DocumentItem | null;
+  onDeselectDocument?: () => void;
+  onOpenDocumentModal?: () => void;
 }
 
 /**
@@ -25,6 +29,9 @@ export function ChatInput({
   onChangeInput,
   onSubmit,
   isCentered = false,
+  selectedDocument = null,
+  onDeselectDocument,
+  onOpenDocumentModal,
 }: ChatInputProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -58,6 +65,40 @@ export function ChatInput({
           : "max-w-3xl mx-auto px-4 pb-4 pt-2 pb-[max(1rem,env(safe-area-inset-bottom))] bg-gradient-to-t from-[#07080d] via-[#07080d]/80 to-transparent"
       }`}
     >
+      {/* Active Document Scope Pill */}
+      {selectedDocument && (
+        <div className="mb-2 flex items-center justify-between gap-2 rounded-xl border border-cyan-500/30 bg-[#0e1320]/90 backdrop-blur-md px-3 py-1.5 shadow-[0_0_15px_rgba(0,210,255,0.08)] animate-in fade-in slide-in-from-bottom-1 duration-200">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-cyan-500/20 text-cyan-400 border border-cyan-500/30">
+              <FileText className="h-3 w-3" />
+            </span>
+            <div className="flex items-center gap-2 min-w-0">
+              <span
+                className="truncate text-xs font-medium text-cyan-200"
+                title={selectedDocument.filename}
+              >
+                {selectedDocument.filename}
+              </span>
+              {selectedDocument.page_count !== undefined && (
+                <span className="shrink-0 rounded bg-cyan-950/60 border border-cyan-800/40 px-1.5 py-0.5 text-[10px] text-cyan-300">
+                  {selectedDocument.page_count} pages
+                </span>
+              )}
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={onDeselectDocument}
+            className="flex h-5 w-5 shrink-0 items-center justify-center rounded hover:bg-white/10 text-zinc-400 hover:text-white transition cursor-pointer"
+            title="Deselect document (return to normal chat)"
+            aria-label="Deselect document"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
+
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -68,8 +109,10 @@ export function ChatInput({
         {/* Plus / Attachment Button */}
         <button
           type="button"
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-zinc-300 hover:bg-white/10 hover:text-white transition"
-          title="Attach or add tools"
+          onClick={onOpenDocumentModal}
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-zinc-300 hover:bg-white/10 hover:text-white transition cursor-pointer"
+          title="Documents / attach PDF"
+          aria-label="Open documents knowledge base"
         >
           <Plus className="h-5 w-5 text-cyan-400" />
         </button>

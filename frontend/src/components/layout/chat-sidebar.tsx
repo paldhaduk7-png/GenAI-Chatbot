@@ -14,6 +14,7 @@ import {
   PanelLeftClose,
   ChevronRight,
   LogOut,
+  FileText,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -35,6 +36,8 @@ interface ChatSidebarProps {
   onTogglePin: (id: string) => void;
   onRenameConversation: (id: string, newTitle: string) => void;
   isLoadingConversations?: boolean;
+  onOpenDocumentModal?: () => void;
+  documentCount?: number;
 }
 
 /**
@@ -58,6 +61,8 @@ export function ChatSidebar({
   onTogglePin,
   onRenameConversation,
   isLoadingConversations = false,
+  onOpenDocumentModal,
+  documentCount = 0,
 }: ChatSidebarProps) {
   // Inline rename state
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -383,6 +388,25 @@ export function ChatSidebar({
             <Plus className="h-4 w-4 text-cyan-400" />
             <span>New chat</span>
           </button>
+
+          {/* Documents / Knowledge Base Button */}
+          {onOpenDocumentModal && (
+            <button
+              onClick={onOpenDocumentModal}
+              className="flex w-full shrink-0 items-center justify-between rounded-lg bg-white/[0.03] border border-white/10 hover:border-cyan-500/30 hover:bg-white/[0.06] px-3 py-2 text-xs font-medium text-zinc-300 hover:text-white transition group cursor-pointer"
+              title="Manage and select PDF documents"
+            >
+              <div className="flex items-center gap-2">
+                <FileText className="h-4 w-4 text-cyan-400 group-hover:text-cyan-300" />
+                <span>Documents</span>
+              </div>
+              {documentCount > 0 && (
+                <span className="rounded-full bg-cyan-500/10 px-1.5 py-0.2 text-[10px] font-mono text-cyan-300 border border-cyan-500/20">
+                  {documentCount}
+                </span>
+              )}
+            </button>
+          )}
 
           {/* Scrollable Conversation Lists */}
           <div className="flex-1 min-h-0 overflow-y-auto space-y-4 pr-1 -mr-1">
