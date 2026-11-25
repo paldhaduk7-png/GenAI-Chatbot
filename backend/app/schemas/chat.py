@@ -1,6 +1,8 @@
 from typing import List, Literal, Optional
 from pydantic import BaseModel, Field, field_validator
 
+from app.schemas.rag import RAGSource
+
 
 class Message(BaseModel):
     role: Literal["user", "assistant", "system"]
@@ -20,6 +22,12 @@ class ChatRequest(BaseModel):
         None, description="Optional ID of an existing conversation session"
     )
     messages: List[Message] = Field(..., min_length=1, description="Conversation history messages")
+    document_id: Optional[str] = Field(
+        None, description="Optional UUID of an uploaded document to query via RAG"
+    )
+    use_rag: bool = Field(
+        False, description="Whether to execute grounded RAG retrieval on the selected document"
+    )
 
 
 class ChatResponse(BaseModel):
@@ -29,3 +37,9 @@ class ChatResponse(BaseModel):
     role: str = "assistant"
     content: str
     provider: str
+    sources: List[RAGSource] = Field(
+        default_factory=list, description="Preserved source references for retrieved chunks"
+    )
+    has_sufficient_context: Optional[bool] = Field(
+        None, description="Whether relevant document context was retrieved"
+    )
