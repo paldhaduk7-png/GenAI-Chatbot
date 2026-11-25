@@ -3,7 +3,7 @@ import os
 from typing import List, Union
 
 from fastapi import HTTPException
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_mistralai import ChatMistralAI
 
@@ -103,6 +103,8 @@ def convert_messages_to_langchain(messages: List[Message]):
             langchain_messages.append(HumanMessage(content=msg.content))
         elif msg.role == "assistant":
             langchain_messages.append(AIMessage(content=msg.content))
+        elif msg.role == "system":
+            langchain_messages.append(SystemMessage(content=msg.content))
     return langchain_messages
 
 
