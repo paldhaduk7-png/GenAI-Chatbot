@@ -35,3 +35,5 @@ CREATE TABLE IF NOT EXISTS document_chunks (
 -- 5. Create indexes on document_chunks
 CREATE INDEX IF NOT EXISTS ix_document_chunks_id ON document_chunks (id);
 CREATE INDEX IF NOT EXISTS ix_document_chunks_document_id ON document_chunks (document_id);
+CREATE INDEX IF NOT EXISTS document_chunks_embedding_hnsw_idx ON document_chunks USING hnsw (embedding vector_cosine_ops);
+

@@ -107,17 +107,24 @@ def retrieve_context_and_sources(
         }
 
     # 3. Resolve document filenames for preserved source metadata
-    doc_ids = list({chunk.document_id for chunk in retrieved_chunks})
+    # Optimization: Use document_filename directly from the retrieval join.
+    # Only execute a secondary query if any chunk lacks document_filename.
     doc_map: Dict[str, str] = {}
-    try:
-        doc_stmt = select(Document.id, Document.filename).where(
-            Document.id.in_(doc_ids),
-            Document.user_id == user_id,
-        )
-        doc_rows = db.execute(doc_stmt).all()
-        doc_map = {row[0]: row[1] for row in doc_rows}
-    except Exception as exc:
-        logger.warning("Could not resolve document filenames from db: %s", exc)
+    missing_doc_ids = list({
+        chunk.document_id
+        for chunk in retrieved_chunks
+        if not getattr(chunk, "document_filename", None)
+    })
+    if missing_doc_ids:
+        try:
+            doc_stmt = select(Document.id, Document.filename).where(
+                Document.id.in_(missing_doc_ids),
+                Document.user_id == user_id,
+            )
+            doc_rows = db.execute(doc_stmt).all()
+            doc_map = {row[0]: row[1] for row in doc_rows}
+        except Exception as exc:
+            logger.warning("Could not resolve document filenames from db: %s", exc)
 
     # 4. Build deduplicated sources list
     sources: List[RAGSource] = []
@@ -128,8 +135,8 @@ def retrieve_context_and_sources(
         seen_chunks.add(chunk.chunk_id)
 
         doc_name = (
-            doc_map.get(chunk.document_id)
-            or getattr(chunk, "document_filename", None)
+            getattr(chunk, "document_filename", None)
+            or doc_map.get(chunk.document_id)
             or f"document_{chunk.document_id[:8]}.pdf"
         )
         sources.append(

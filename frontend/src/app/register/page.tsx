@@ -60,6 +60,8 @@ export default function RegisterPage() {
       errors.password = "Password is required.";
     } else if (password.length < 8) {
       errors.password = "Password must be at least 8 characters long.";
+    } else if (!/[a-zA-Z]/.test(password) || !/\d/.test(password)) {
+      errors.password = "Password must contain at least one letter and at least one number.";
     } else if (password.length > 128) {
       errors.password = "Password cannot exceed 128 characters.";
     }

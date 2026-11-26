@@ -1,12 +1,14 @@
 from datetime import datetime, timezone
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
-from app.core.deps import get_current_user
+from app.config import settings
+from app.core.deps import get_current_user, get_rate_limit_key, limiter
 from app.db.models import Conversation, User
+
 from app.db.session import get_db
 from app.schemas.conversation import (
     ConversationCreate,
@@ -20,10 +22,13 @@ router = APIRouter(prefix="/api/conversations", tags=["conversations"])
 
 
 @router.get("", response_model=List[ConversationResponse])
+@limiter.limit(settings.RATE_LIMIT_DEFAULT, key_func=get_rate_limit_key)
 def list_conversations(
+    request: Request,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> List[ConversationResponse]:
+
     """
     GET /api/conversations
     Return all conversations belonging to the authenticated user, sorted by updated_at descending.
@@ -39,11 +44,14 @@ def list_conversations(
 
 
 @router.post("", response_model=ConversationResponse, status_code=status.HTTP_201_CREATED)
+@limiter.limit(settings.RATE_LIMIT_DEFAULT, key_func=get_rate_limit_key)
 def create_conversation(
+    request: Request,
     payload: Optional[ConversationCreate] = None,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> ConversationResponse:
+
     """
     POST /api/conversations
     Create a new conversation session assigned to the authenticated user.
@@ -60,11 +68,14 @@ def create_conversation(
 
 
 @router.get("/{conversation_id}", response_model=ConversationDetailResponse)
+@limiter.limit(settings.RATE_LIMIT_DEFAULT, key_func=get_rate_limit_key)
 def get_conversation(
+    request: Request,
     conversation_id: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> ConversationDetailResponse:
+
     """
     GET /api/conversations/{conversation_id}
     Return the conversation and its chronological messages if owned by current_user.
@@ -89,12 +100,15 @@ def get_conversation(
 
 
 @router.patch("/{conversation_id}", response_model=ConversationResponse)
+@limiter.limit(settings.RATE_LIMIT_DEFAULT, key_func=get_rate_limit_key)
 def update_conversation_title(
+    request: Request,
     conversation_id: str,
     payload: ConversationUpdate,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> ConversationResponse:
+
     """
     PATCH /api/conversations/{conversation_id}
     Allow updating the conversation title if owned by current_user.
@@ -119,11 +133,14 @@ def update_conversation_title(
 
 
 @router.patch("/{conversation_id}/pin", response_model=ConversationResponse)
+@limiter.limit(settings.RATE_LIMIT_DEFAULT, key_func=get_rate_limit_key)
 def toggle_conversation_pin(
+    request: Request,
     conversation_id: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> ConversationResponse:
+
     """
     PATCH /api/conversations/{conversation_id}/pin
     Toggle the conversation's pinned status for current_user.
@@ -162,11 +179,14 @@ def toggle_conversation_pin(
 
 
 @router.delete("/{conversation_id}", response_model=ConversationDeleteResponse)
+@limiter.limit(settings.RATE_LIMIT_DEFAULT, key_func=get_rate_limit_key)
 def delete_conversation(
+    request: Request,
     conversation_id: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> ConversationDeleteResponse:
+
     """
     DELETE /api/conversations/{conversation_id}
     Delete the conversation and its associated messages if owned by current_user.

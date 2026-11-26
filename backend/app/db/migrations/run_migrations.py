@@ -37,6 +37,7 @@ def apply_migrations():
     user_cols = [c["name"] for c in inspector.get_columns("users")] if "users" in tables else []
     doc_cols = [c["name"] for c in inspector.get_columns("documents")] if "documents" in tables else []
     chunk_cols = [c["name"] for c in inspector.get_columns("document_chunks")] if "document_chunks" in tables else []
+    chunk_indexes = [idx["name"] for idx in inspector.get_indexes("document_chunks")] if "document_chunks" in tables else []
 
     return {
         "tables": tables,
@@ -44,6 +45,7 @@ def apply_migrations():
         "users_columns": user_cols,
         "documents_columns": doc_cols,
         "document_chunks_columns": chunk_cols,
+        "document_chunks_indexes": chunk_indexes,
     }
 
 

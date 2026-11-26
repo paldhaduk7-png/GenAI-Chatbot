@@ -69,8 +69,19 @@ def search_similar_chunks(
         # Native pgvector cosine distance: DocumentChunk.embedding.cosine_distance(query_embedding)
         distance_expr = DocumentChunk.embedding.cosine_distance(query_embedding)
 
+        # Optimization: Project only required columns.
+        # Avoids transferring and deserializing heavy 384-dimensional vector arrays over the wire,
+        # avoids full ORM entity hydration, and joins Document to obtain document filename directly.
         stmt = (
-            select(DocumentChunk, distance_expr.label("distance"))
+            select(
+                DocumentChunk.id.label("chunk_id"),
+                DocumentChunk.document_id.label("document_id"),
+                Document.filename.label("document_filename"),
+                DocumentChunk.content.label("content"),
+                DocumentChunk.page_number.label("page_number"),
+                DocumentChunk.chunk_index.label("chunk_index"),
+                distance_expr.label("distance"),
+            )
             .join(Document, DocumentChunk.document_id == Document.id)
             .where(
                 Document.user_id == user_id,
@@ -86,16 +97,17 @@ def search_similar_chunks(
         rows = db.execute(stmt).all()
 
         retrieved: List[RetrievedChunk] = []
-        for chunk, dist_val in rows:
-            dist = float(dist_val) if dist_val is not None else 0.0
+        for row in rows:
+            dist = float(row.distance) if row.distance is not None else 0.0
             similarity = float(1.0 - dist)
             retrieved.append(
                 RetrievedChunk(
-                    chunk_id=chunk.id,
-                    document_id=chunk.document_id,
-                    content=chunk.content,
-                    page_number=chunk.page_number,
-                    chunk_index=chunk.chunk_index,
+                    chunk_id=row.chunk_id,
+                    document_id=row.document_id,
+                    document_filename=row.document_filename,
+                    content=row.content,
+                    page_number=row.page_number,
+                    chunk_index=row.chunk_index,
                     similarity_score=round(similarity, 6),
                     distance=round(dist, 6),
                 )
@@ -105,7 +117,15 @@ def search_similar_chunks(
     else:
         # Fallback for SQLite / unit-test environments without native pgvector extension
         stmt = (
-            select(DocumentChunk)
+            select(
+                DocumentChunk.id.label("chunk_id"),
+                DocumentChunk.document_id.label("document_id"),
+                Document.filename.label("document_filename"),
+                DocumentChunk.content.label("content"),
+                DocumentChunk.page_number.label("page_number"),
+                DocumentChunk.chunk_index.label("chunk_index"),
+                DocumentChunk.embedding.label("embedding"),
+            )
             .join(Document, DocumentChunk.document_id == Document.id)
             .where(
                 Document.user_id == user_id,
@@ -116,7 +136,10 @@ def search_similar_chunks(
         if document_id:
             stmt = stmt.where(DocumentChunk.document_id == document_id)
 
-        candidate_chunks = db.scalars(stmt).all()
+        rows = db.execute(stmt).all()
+
+        if not rows:
+            return []
 
         query_vec = np.array(query_embedding, dtype=np.float32)
         query_norm = np.linalg.norm(query_vec)
@@ -124,10 +147,10 @@ def search_similar_chunks(
             query_norm = 1.0
 
         scored_chunks = []
-        for chunk in candidate_chunks:
-            if chunk.embedding is None:
+        for row in rows:
+            if row.embedding is None:
                 continue
-            chunk_vec = np.array(chunk.embedding, dtype=np.float32)
+            chunk_vec = np.array(row.embedding, dtype=np.float32)
             chunk_norm = np.linalg.norm(chunk_vec)
             if chunk_norm == 0:
                 chunk_norm = 1.0
@@ -135,7 +158,7 @@ def search_similar_chunks(
             # Cosine similarity: (u . v) / (||u|| * ||v||)
             sim = float(np.dot(query_vec, chunk_vec) / (query_norm * chunk_norm))
             dist = float(1.0 - sim)
-            scored_chunks.append((chunk, dist, sim))
+            scored_chunks.append((row, dist, sim))
 
         # Sort by distance ascending (nearest / most similar first)
         scored_chunks.sort(key=lambda item: item[1])
@@ -143,15 +166,16 @@ def search_similar_chunks(
 
         return [
             RetrievedChunk(
-                chunk_id=chunk.id,
-                document_id=chunk.document_id,
-                content=chunk.content,
-                page_number=chunk.page_number,
-                chunk_index=chunk.chunk_index,
+                chunk_id=row.chunk_id,
+                document_id=row.document_id,
+                document_filename=row.document_filename,
+                content=row.content,
+                page_number=row.page_number,
+                chunk_index=row.chunk_index,
                 similarity_score=round(sim, 6),
                 distance=round(dist, 6),
             )
-            for chunk, dist, sim in top_scored
+            for row, dist, sim in top_scored
         ]
 
 

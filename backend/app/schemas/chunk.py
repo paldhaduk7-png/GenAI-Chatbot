@@ -27,6 +27,7 @@ class RetrievedChunk(BaseModel):
     """
     chunk_id: str = Field(..., description="Unique ID of the document chunk")
     document_id: str = Field(..., description="ID of the parent document")
+    document_filename: Optional[str] = Field(None, description="Filename of the parent document")
     content: str = Field(..., description="Text content of the retrieved chunk")
     page_number: Optional[int] = Field(None, description="Source page number")
     chunk_index: int = Field(..., description="Sequential index within the document")

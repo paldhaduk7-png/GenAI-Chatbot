@@ -9,12 +9,14 @@ import tempfile
 import uuid
 from typing import List
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.deps import get_current_user
+from app.config import settings
+from app.core.deps import get_current_user, get_rate_limit_key, limiter
 from app.db.models import Document, User
+
 from app.db.session import get_db
 from app.schemas.chunk import VectorSearchRequest, VectorSearchResponse
 from app.schemas.document import DocumentResponse, DocumentUploadResponse
@@ -37,11 +39,14 @@ router = APIRouter(prefix="/api/documents", tags=["documents"])
 
 
 @router.post("/upload", response_model=DocumentUploadResponse, status_code=status.HTTP_201_CREATED)
+@limiter.limit(settings.RATE_LIMIT_DOCUMENT_UPLOAD, key_func=get_rate_limit_key)
 async def upload_document(
+    request: Request,
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> DocumentUploadResponse:
+
     """
     POST /api/documents/upload
     Authenticated PDF upload and text extraction.
@@ -131,13 +136,13 @@ async def upload_document(
         try:
             extraction = extract_text_from_pdf(temp_path)
         except (PDFExtractionError, Exception) as extract_exc:
-            logger.error("PDF text extraction failed for document %s: %s", doc_id, extract_exc)
+            logger.exception("PDF text extraction failed for document %s: %s", doc_id, extract_exc)
             document.status = "failed"
             db.commit()
             delete_file(storage_reference)
             raise HTTPException(
                 status_code=422,
-                detail=f"PDF extraction failed: {str(extract_exc)}",
+                detail="PDF extraction failed. Failed to extract text from PDF document.",
             ) from extract_exc
 
         # 9. Chunking, Embedding Generation, and Persistence (Step 5)
@@ -163,11 +168,10 @@ async def upload_document(
             db.commit()
 
         except Exception as proc_exc:
-            logger.error(
+            logger.exception(
                 "Chunking, embedding, or persistence failed for document %s: %s",
                 doc_id,
                 proc_exc,
-                exc_info=True,
             )
             db.rollback()
             # Update status to failed in a clean transaction
@@ -180,7 +184,7 @@ async def upload_document(
             delete_file(storage_reference)
             raise HTTPException(
                 status_code=422,
-                detail=f"Document processing failed during chunking/embedding persistence: {str(proc_exc)}",
+                detail="Failed to process document content.",
             ) from proc_exc
 
         # 10. Formulate appropriate user-facing message
@@ -213,10 +217,13 @@ async def upload_document(
 
 
 @router.get("", response_model=List[DocumentResponse])
+@limiter.limit(settings.RATE_LIMIT_DEFAULT, key_func=get_rate_limit_key)
 def list_documents(
+    request: Request,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> List[DocumentResponse]:
+
     """
     GET /api/documents
     List all documents owned by the authenticated user.
@@ -231,11 +238,14 @@ def list_documents(
 
 
 @router.get("/{document_id}", response_model=DocumentResponse)
+@limiter.limit(settings.RATE_LIMIT_DEFAULT, key_func=get_rate_limit_key)
 def get_document(
+    request: Request,
     document_id: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> DocumentResponse:
+
     """
     GET /api/documents/{document_id}
     Retrieve details and status of a document owned by the authenticated user.
@@ -255,11 +265,14 @@ def get_document(
 
 
 @router.delete("/{document_id}", status_code=status.HTTP_200_OK)
+@limiter.limit(settings.RATE_LIMIT_DEFAULT, key_func=get_rate_limit_key)
 def delete_document(
+    request: Request,
     document_id: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+
     """
     DELETE /api/documents/{document_id}
     Delete a document owned by current_user from the database and Cloudinary.
@@ -286,11 +299,14 @@ def delete_document(
 
 
 @router.post("/search", response_model=VectorSearchResponse)
+@limiter.limit(settings.RATE_LIMIT_DOCUMENT_SEARCH, key_func=get_rate_limit_key)
 def search_documents(
+    request: Request,
     payload: VectorSearchRequest,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> VectorSearchResponse:
+
     """
     POST /api/documents/search
     Perform semantic vector similarity search across document chunks.

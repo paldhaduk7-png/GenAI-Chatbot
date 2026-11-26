@@ -1,6 +1,7 @@
 """
 Authentication and user Pydantic schemas for request validation and response serialization.
 """
+import re
 from datetime import datetime
 from typing import Optional
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
@@ -19,9 +20,15 @@ class UserRegister(BaseModel):
 
     @field_validator("password")
     @classmethod
-    def validate_password_not_blank(cls, value: str) -> str:
-        if not value.strip():
+    def validate_password_strength(cls, value: str) -> str:
+        if not value or not value.strip():
             raise ValueError("Password cannot be empty or contain only whitespace.")
+        if len(value) < 8:
+            raise ValueError("Password must be at least 8 characters long.")
+        if not re.search(r"[a-zA-Z]", value):
+            raise ValueError("Password must contain at least one letter (a-z, A-Z).")
+        if not re.search(r"\d", value):
+            raise ValueError("Password must contain at least one digit (0-9).")
         return value
 
     @field_validator("full_name")

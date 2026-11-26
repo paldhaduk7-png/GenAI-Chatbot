@@ -23,12 +23,24 @@ def get_normalized_database_url(url: str) -> str:
 normalized_database_url = get_normalized_database_url(DATABASE_URL)
 
 if normalized_database_url:
-    # pool_pre_ping=True ensures idle or suspended Neon connections are verified
-    # pool_recycle=300 recycles connections every 5 minutes to prevent stale timeouts
+    # Neon serverless PostgreSQL connection pooling configuration:
+    # - pool_pre_ping=True: Actively validates connection health before checkout, handling Neon compute suspension/resume.
+    # - pool_recycle=300: Recycles connections every 5 minutes to prevent stale TCP sockets.
+    # - pool_size=10, max_overflow=20: Manages concurrent connection bursts while staying safely within Neon tier limits.
+    # - pool_timeout=30: Fail-fast timeout for connection pool exhaustion.
+    engine_kwargs = {
+        "pool_pre_ping": True,
+        "pool_recycle": 300,
+    }
+    if not normalized_database_url.startswith("sqlite"):
+        engine_kwargs.update({
+            "pool_size": 10,
+            "max_overflow": 20,
+            "pool_timeout": 30,
+        })
     engine = create_engine(
         normalized_database_url,
-        pool_pre_ping=True,
-        pool_recycle=300,
+        **engine_kwargs,
     )
     SessionLocal = sessionmaker(
         autocommit=False,

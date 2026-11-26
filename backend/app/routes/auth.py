@@ -4,16 +4,18 @@ Provides user registration, login with JWT token issuance, and current user prof
 """
 import logging
 import uuid
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.core.deps import get_current_user
+from app.config import settings
+from app.core.deps import get_client_ip, get_current_user, get_rate_limit_key, limiter
 from app.core.security import create_access_token, hash_password, verify_password
 from app.db.models import User
 from app.db.session import get_db
 from app.schemas.auth import Token, UserLogin, UserOut, UserRegister
+
 
 logger = logging.getLogger(__name__)
 
@@ -27,10 +29,13 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
     summary="Register a new user",
     description="Registers a new user account with hashed password and returns public user profile.",
 )
+@limiter.limit(settings.RATE_LIMIT_AUTH_REGISTER, key_func=get_client_ip)
 def register(
+    request: Request,
     payload: UserRegister,
     db: Session = Depends(get_db),
 ) -> UserOut:
+
     """
     POST /api/auth/register
     Creates a new user record.
@@ -89,10 +94,13 @@ def register(
     summary="User login",
     description="Authenticates credentials and returns a signed JWT access token.",
 )
+@limiter.limit(settings.RATE_LIMIT_AUTH_LOGIN, key_func=get_client_ip)
 def login(
+    request: Request,
     payload: UserLogin,
     db: Session = Depends(get_db),
 ) -> Token:
+
     """
     POST /api/auth/login
     Authenticates user email and password.
@@ -129,9 +137,12 @@ def login(
     summary="Get current user profile",
     description="Returns public profile information for the currently authenticated user.",
 )
+@limiter.limit(settings.RATE_LIMIT_DEFAULT, key_func=get_rate_limit_key)
 def get_me(
+    request: Request,
     current_user: User = Depends(get_current_user),
 ) -> UserOut:
+
     """
     GET /api/auth/me
     Retrieves the authenticated user profile.

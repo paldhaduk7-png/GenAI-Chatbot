@@ -2,11 +2,12 @@ import logging
 from datetime import datetime, timezone
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.deps import get_current_user
+from app.config import settings
+from app.core.deps import get_current_user, get_rate_limit_key, limiter
 from app.db.models import Conversation, Document, Message as DbMessage, User
 from app.db.session import get_db
 from app.schemas.chat import ChatRequest, ChatResponse, Message
@@ -19,8 +20,10 @@ router = APIRouter(prefix="/api", tags=["chat"])
 
 
 @router.post("/chat", response_model=ChatResponse)
+@limiter.limit(settings.RATE_LIMIT_CHAT, key_func=get_rate_limit_key)
 def chat_endpoint(
-    request: ChatRequest,
+    request: Request,
+    payload: ChatRequest,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> ChatResponse:
@@ -35,7 +38,7 @@ def chat_endpoint(
     """
     # 1. Identify latest user message in incoming payload
     latest_user_message = None
-    for msg in reversed(request.messages):
+    for msg in reversed(payload.messages):
         if msg.role == "user":
             latest_user_message = msg
             break
@@ -47,16 +50,16 @@ def chat_endpoint(
         )
 
     # 2. Resolve or create conversation with ownership enforcement
-    if request.conversation_id:
+    if payload.conversation_id:
         stmt = select(Conversation).where(
-            Conversation.id == request.conversation_id,
+            Conversation.id == payload.conversation_id,
             Conversation.user_id == current_user.id,
         )
         conversation = db.scalars(stmt).first()
         if not conversation:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Conversation with id '{request.conversation_id}' was not found.",
+                detail=f"Conversation with id '{payload.conversation_id}' was not found.",
             )
     else:
         # Generate clean title snippet from the first user prompt
@@ -85,25 +88,25 @@ def chat_endpoint(
     ]
 
     # If DB was empty but request provided earlier history (e.g. migration or initial turns)
-    if not existing_db_messages and len(request.messages) > 1:
-        for prev_msg in request.messages:
+    if not existing_db_messages and len(payload.messages) > 1:
+        for prev_msg in payload.messages:
             if prev_msg is not latest_user_message:
                 history_context.append(Message(role=prev_msg.role, content=prev_msg.content))
 
     # 5. Check if RAG is explicitly enabled with a selected document
-    is_rag_active = bool(request.use_rag and request.document_id)
+    is_rag_active = bool(payload.use_rag and payload.document_id)
 
     if is_rag_active:
         # Validate that selected document exists and belongs to current_user
         doc_stmt = select(Document).where(
-            Document.id == request.document_id,
+            Document.id == payload.document_id,
             Document.user_id == current_user.id,
         )
         document = db.scalar(doc_stmt)
         if not document:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Document with id '{request.document_id}' was not found.",
+                detail=f"Document with id '{payload.document_id}' was not found.",
             )
 
         try:
@@ -111,7 +114,7 @@ def chat_endpoint(
                 db=db,
                 user_id=current_user.id,
                 question=latest_user_message.content,
-                document_id=request.document_id,
+                document_id=payload.document_id,
                 chat_history=history_context,
             )
             answer_content = rag_result.answer
@@ -137,8 +140,8 @@ def chat_endpoint(
 
     # 6. Save messages to DB atomically upon successful LLM response
     # If DB was empty and earlier history was passed, persist it once
-    if not existing_db_messages and len(request.messages) > 1:
-        for prev_msg in request.messages:
+    if not existing_db_messages and len(payload.messages) > 1:
+        for prev_msg in payload.messages:
             if prev_msg is not latest_user_message:
                 db.add(
                     DbMessage(
@@ -147,6 +150,7 @@ def chat_endpoint(
                         content=prev_msg.content,
                     )
                 )
+
 
     # Save latest user message
     db.add(

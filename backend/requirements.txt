@@ -17,3 +17,6 @@ sentence-transformers
 python-multipart
 cloudinary
 langchain-community
+slowapi>=0.1.9
+redis>=5.0.0
+
