@@ -4,10 +4,12 @@ from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.core.deps import get_current_user, get_rate_limit_key, limiter
+from app.core.retry import run_db_read_with_retry
 from app.db.models import Conversation, Document, Message as DbMessage, User
 from app.db.session import get_db
 from app.schemas.chat import ChatRequest, ChatResponse, Message
@@ -55,7 +57,12 @@ def chat_endpoint(
             Conversation.id == payload.conversation_id,
             Conversation.user_id == current_user.id,
         )
-        conversation = db.scalars(stmt).first()
+        conversation = run_db_read_with_retry(
+            db,
+            lambda: db.scalars(stmt).first(),
+            max_retries=settings.DB_READ_MAX_RETRIES,
+            operation_name="chat_get_conversation",
+        )
         if not conversation:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -74,12 +81,15 @@ def chat_endpoint(
         db.flush()  # Assigns conversation.id without committing transaction
 
     # 3. Retrieve existing conversation history from PostgreSQL
-    existing_db_messages = (
-        db.scalars(
+    existing_db_messages = run_db_read_with_retry(
+        db,
+        lambda: db.scalars(
             select(DbMessage)
             .where(DbMessage.conversation_id == conversation.id)
             .order_by(DbMessage.created_at.asc())
-        ).all()
+        ).all(),
+        max_retries=settings.DB_READ_MAX_RETRIES,
+        operation_name="chat_get_history",
     )
 
     # 4. Formulate preceding conversation history:
@@ -173,7 +183,15 @@ def chat_endpoint(
 
     # Update conversation's updated_at timestamp
     conversation.updated_at = datetime.now(timezone.utc)
-    db.commit()
+    try:
+        db.commit()
+    except SQLAlchemyError as db_exc:
+        db.rollback()
+        logger.error("Failed to persist chat messages to database: %s", type(db_exc).__name__, exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="A temporary database error occurred while saving your conversation. Please try again.",
+        ) from db_exc
 
     return ChatResponse(
         conversation_id=conversation.id,

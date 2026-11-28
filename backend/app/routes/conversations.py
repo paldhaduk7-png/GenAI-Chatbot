@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.config import settings
 from app.core.deps import get_current_user, get_rate_limit_key, limiter
+from app.core.retry import run_db_read_with_retry
 from app.db.models import Conversation, User
 
 from app.db.session import get_db
@@ -39,7 +40,12 @@ def list_conversations(
         .where(Conversation.user_id == current_user.id)
         .order_by(Conversation.pinned.desc(), Conversation.updated_at.desc())
     )
-    conversations = db.scalars(stmt).all()
+    conversations = run_db_read_with_retry(
+        db,
+        lambda: db.scalars(stmt).all(),
+        max_retries=settings.DB_READ_MAX_RETRIES,
+        operation_name="list_conversations",
+    )
     return conversations
 
 
@@ -89,7 +95,12 @@ def get_conversation(
         )
         .options(selectinload(Conversation.messages))
     )
-    conversation = db.scalars(stmt).first()
+    conversation = run_db_read_with_retry(
+        db,
+        lambda: db.scalars(stmt).first(),
+        max_retries=settings.DB_READ_MAX_RETRIES,
+        operation_name="get_conversation",
+    )
 
     if not conversation:
         raise HTTPException(

@@ -11,10 +11,12 @@ from typing import List
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.core.deps import get_current_user, get_rate_limit_key, limiter
+from app.core.retry import run_db_read_with_retry
 from app.db.models import Document, User
 
 from app.db.session import get_db
@@ -107,9 +109,17 @@ async def upload_document(
             file_path=storage_reference,
             status="pending",
         )
-        db.add(document)
-        db.commit()
-        db.refresh(document)
+        try:
+            db.add(document)
+            db.commit()
+            db.refresh(document)
+        except SQLAlchemyError as db_exc:
+            db.rollback()
+            logger.error("Database error creating document record %s: %s", doc_id, type(db_exc).__name__)
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="A temporary database error occurred while initializing the document upload. Please try again.",
+            ) from db_exc
 
         # 6. Upload PDF to Cloudinary under authenticated mode
         try:
@@ -179,6 +189,7 @@ async def upload_document(
                 document.status = "failed"
                 db.commit()
             except Exception as status_err:
+                db.rollback()
                 logger.error("Failed to update status to failed for %s: %s", doc_id, status_err)
 
             delete_file(storage_reference)
@@ -233,7 +244,12 @@ def list_documents(
         .where(Document.user_id == current_user.id)
         .order_by(Document.created_at.desc())
     )
-    documents = db.scalars(stmt).all()
+    documents = run_db_read_with_retry(
+        db,
+        lambda: db.scalars(stmt).all(),
+        max_retries=settings.DB_READ_MAX_RETRIES,
+        operation_name="list_documents",
+    )
     return list(documents)
 
 
@@ -255,7 +271,12 @@ def get_document(
         Document.id == document_id,
         Document.user_id == current_user.id,
     )
-    document = db.scalar(stmt)
+    document = run_db_read_with_retry(
+        db,
+        lambda: db.scalar(stmt),
+        max_retries=settings.DB_READ_MAX_RETRIES,
+        operation_name="get_document",
+    )
     if document is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -281,7 +302,12 @@ def delete_document(
         Document.id == document_id,
         Document.user_id == current_user.id,
     )
-    document = db.scalar(stmt)
+    document = run_db_read_with_retry(
+        db,
+        lambda: db.scalar(stmt),
+        max_retries=settings.DB_READ_MAX_RETRIES,
+        operation_name="get_document",
+    )
     if document is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

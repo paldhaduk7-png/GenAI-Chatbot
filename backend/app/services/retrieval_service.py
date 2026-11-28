@@ -10,7 +10,8 @@ import numpy as np
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.config import EMBEDDING_DIMENSION
+from app.config import EMBEDDING_DIMENSION, settings
+from app.core.retry import run_db_read_with_retry
 from app.db.models import Document, DocumentChunk
 from app.schemas.chunk import RetrievedChunk
 from app.services.embedding_service import generate_embedding
@@ -94,7 +95,12 @@ def search_similar_chunks(
 
         stmt = stmt.order_by(distance_expr.asc()).limit(k)
 
-        rows = db.execute(stmt).all()
+        rows = run_db_read_with_retry(
+            db,
+            lambda: db.execute(stmt).all(),
+            max_retries=settings.DB_READ_MAX_RETRIES,
+            operation_name="pgvector_search_chunks",
+        )
 
         retrieved: List[RetrievedChunk] = []
         for row in rows:

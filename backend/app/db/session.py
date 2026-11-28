@@ -3,7 +3,7 @@ from typing import Generator
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.config import DATABASE_URL
+from app.config import DATABASE_URL, settings
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +37,9 @@ if normalized_database_url:
             "pool_size": 10,
             "max_overflow": 20,
             "pool_timeout": 30,
+            "connect_args": {
+                "connect_timeout": settings.DB_CONNECT_TIMEOUT_SECONDS,
+            },
         })
     engine = create_engine(
         normalized_database_url,
