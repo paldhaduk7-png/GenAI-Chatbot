@@ -11,6 +11,7 @@ import cloudinary.uploader
 import cloudinary.utils
 
 from app.config import settings
+from app.core.retry import RetryPolicy, execute_with_retry, is_transient_error
 
 logger = logging.getLogger(__name__)
 
@@ -73,19 +74,35 @@ def upload_pdf_file(
     public_id = f"{folder_prefix}/{user_id}/{document_id}"
     logger.info("Uploading PDF to Cloudinary: public_id=%s, type=authenticated", public_id)
 
-    try:
-        response = cloudinary.uploader.upload(
+    policy = RetryPolicy(
+        max_retries=settings.CLOUDINARY_MAX_RETRIES,
+        initial_delay=0.5,
+        max_delay=4.0,
+        jitter=True,
+    )
+
+    def _do_upload() -> Dict[str, Any]:
+        return cloudinary.uploader.upload(
             file_path,
             public_id=public_id,
             resource_type="raw",
             type="authenticated",
             overwrite=True,
+            timeout=settings.CLOUDINARY_TIMEOUT_SECONDS,
+        )
+
+    try:
+        response = execute_with_retry(
+            _do_upload,
+            policy=policy,
+            is_retryable=is_transient_error,
+            operation_name="cloudinary_upload",
         )
         logger.info("Successfully uploaded PDF to Cloudinary: public_id=%s", public_id)
         return response
     except Exception as exc:
-        logger.error("Cloudinary upload failed for public_id=%s: %s", public_id, exc)
-        raise RuntimeError(f"Cloudinary upload failed: {str(exc)}") from exc
+        logger.error("Cloudinary upload failed for public_id=%s: %s", public_id, type(exc).__name__)
+        raise RuntimeError("Cloudinary upload failed.") from exc
 
 
 def delete_file(
@@ -107,17 +124,33 @@ def delete_file(
     init_cloudinary()
 
     logger.info("Deleting file from Cloudinary (compensating cleanup): public_id=%s", public_id)
-    try:
-        result = cloudinary.uploader.destroy(
+    policy = RetryPolicy(
+        max_retries=settings.CLOUDINARY_MAX_RETRIES,
+        initial_delay=0.5,
+        max_delay=4.0,
+        jitter=True,
+    )
+
+    def _do_destroy() -> Dict[str, Any]:
+        return cloudinary.uploader.destroy(
             public_id,
             resource_type=resource_type,
             type=delivery_type,
+            timeout=settings.CLOUDINARY_TIMEOUT_SECONDS,
+        )
+
+    try:
+        result = execute_with_retry(
+            _do_destroy,
+            policy=policy,
+            is_retryable=is_transient_error,
+            operation_name="cloudinary_delete",
         )
         is_ok = result.get("result") in ("ok", "not found")
         logger.info("Cloudinary delete result for %s: %s", public_id, result.get("result"))
         return is_ok
     except Exception as exc:
-        logger.error("Failed to delete file from Cloudinary: public_id=%s, error=%s", public_id, exc)
+        logger.error("Failed to delete file from Cloudinary: public_id=%s, error=%s", public_id, type(exc).__name__)
         return False
 
 

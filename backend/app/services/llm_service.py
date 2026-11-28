@@ -12,6 +12,14 @@ from app.config import (
     GOOGLE_API_KEY,
     MISTRAL_API_KEY,
     MISTRAL_MODEL,
+    settings,
+)
+from app.core.retry import (
+    RetryPolicy,
+    execute_with_retry,
+    extract_status_code,
+    is_permanent_error,
+    is_transient_error,
 )
 from app.schemas.chat import ChatResponse, Message
 
@@ -38,61 +46,49 @@ def extract_text_from_content(content: Union[str, list, object]) -> str:
 
 
 def is_provider_fallback_error(exc: Exception) -> bool:
-    """Determine if an exception is eligible for provider fallback (rate limits, quotas, server/network errors)."""
+    """
+    Determine if an exception is eligible for provider fallback (rate limits, quotas,
+    timeouts, or transient server/network errors).
+    Permanent client/auth/validation/programming errors do NOT trigger fallback.
+    """
     # Programming errors in local code should not trigger provider fallback
     if isinstance(exc, (TypeError, ValueError, KeyError, IndexError, AttributeError, NameError)):
         return False
 
-    # Check for underlying exception if wrapped by tenacity
-    if hasattr(exc, "last_attempt"):
-        try:
-            inner_exc = exc.last_attempt.exception()
-            if inner_exc and inner_exc is not exc:
-                return is_provider_fallback_error(inner_exc)
-        except Exception:
-            pass
+    status_code = extract_status_code(exc)
 
-    # Check for HTTP status code on exception or inner response
-    status_code = getattr(exc, "status_code", None)
-    if status_code is None and hasattr(exc, "response") and exc.response is not None:
-        status_code = getattr(exc.response, "status_code", None)
+    # Explicit client/auth/validation failures should not fall back
+    if status_code in {400, 401, 404, 422}:
+        return False
 
-    # 402 (Payment/Quota), 403 (Tier/Quota), 408 (Timeout), 429 (Rate Limit), 5xx (Server Errors)
-    if status_code in {402, 403, 408, 429, 500, 502, 503, 504}:
+    # Quota/payment/tier errors (402, 403) should immediately fall back to secondary provider
+    if status_code in {402, 403}:
         return True
 
-    # Common connection and timeout errors
-    if isinstance(exc, (TimeoutError, ConnectionError)):
+    if is_transient_error(exc):
         return True
 
     error_text = str(exc).lower()
-    fallback_indicators = [
-        "rate limit",
-        "rate_limited",
-        "ratelimit",
-        "too many requests",
+    quota_indicators = (
         "quota",
         "resource exhausted",
         "resource_exhausted",
         "tier_not_allowed",
         "subscription tier",
         "credits",
-        "timeout",
-        "timed out",
-        "temporarily unavailable",
-        "service unavailable",
-        "server error",
-        "internal server error",
-        "bad gateway",
-        "connection refused",
-        "connection reset",
-        "500",
-        "502",
-        "503",
-        "504",
-        "429",
-    ]
-    return any(indicator in error_text for indicator in fallback_indicators)
+    )
+    return any(indicator in error_text for indicator in quota_indicators)
+
+
+def _build_llm_retry_policy() -> RetryPolicy:
+    """Construct bounded retry policy for LLM provider calls from settings."""
+    return RetryPolicy(
+        max_retries=settings.LLM_MAX_RETRIES,
+        initial_delay=settings.LLM_INITIAL_RETRY_DELAY,
+        max_delay=settings.LLM_MAX_RETRY_DELAY,
+        jitter=settings.LLM_RETRY_JITTER,
+        respect_retry_after=True,
+    )
 
 
 def convert_messages_to_langchain(messages: List[Message]):
@@ -125,11 +121,22 @@ def generate_chat_response(messages: List[Message]) -> ChatResponse:
         )
 
     langchain_messages = convert_messages_to_langchain(messages)
+    retry_policy = _build_llm_retry_policy()
 
-    # 1. Primary provider: Mistral
+    # 1. Primary provider: Mistral (SDK max_retries=0 to prevent overlapping duplicate retries)
     try:
-        mistral_llm = ChatMistralAI(model=MISTRAL_MODEL, mistral_api_key=mistral_key)
-        result = mistral_llm.invoke(langchain_messages)
+        mistral_llm = ChatMistralAI(
+            model=MISTRAL_MODEL,
+            mistral_api_key=mistral_key,
+            timeout=settings.MISTRAL_TIMEOUT_SECONDS,
+            max_retries=0,
+        )
+        result = execute_with_retry(
+            lambda: mistral_llm.invoke(langchain_messages),
+            policy=retry_policy,
+            is_retryable=is_transient_error,
+            operation_name="mistral_chat",
+        )
         text_content = extract_text_from_content(result.content)
         return ChatResponse(role="assistant", content=text_content, provider="mistral")
 
@@ -140,15 +147,18 @@ def generate_chat_response(messages: List[Message]) -> ChatResponse:
 
         # If error is not a temporary provider / quota / rate limit issue, reject fallback
         if not is_provider_fallback_error(primary_exc):
-            logger.error("Primary provider failed with non-fallback error: %s", primary_exc, exc_info=True)
-            status_code = getattr(primary_exc, "status_code", None)
-            if status_code is None and hasattr(primary_exc, "response") and primary_exc.response is not None:
-                status_code = getattr(primary_exc.response, "status_code", None)
+            logger.error("Primary provider failed with non-fallback error: %s", type(primary_exc).__name__, exc_info=True)
+            status_code = extract_status_code(primary_exc)
 
             if status_code == 401:
                 raise HTTPException(
                     status_code=500,
                     detail="AI service configuration error: Primary provider authentication failed.",
+                )
+            if status_code in {400, 422} and not is_permanent_error(ValueError()):
+                raise HTTPException(
+                    status_code=400,
+                    detail="The chat request could not be processed by the AI provider.",
                 )
 
             raise HTTPException(
@@ -157,11 +167,11 @@ def generate_chat_response(messages: List[Message]) -> ChatResponse:
             )
 
         logger.warning(
-            "Primary provider (Mistral) encountered provider error (%s). Falling back to Gemini.",
+            "Primary provider (Mistral) failed (%s). Falling back to Gemini.",
             type(primary_exc).__name__,
         )
 
-        # 2. Fallback provider: Gemini
+        # 2. Fallback provider: Gemini (SDK max_retries=0 to prevent overlapping duplicate retries)
         try:
             if not google_key:
                 logger.error("Fallback provider configuration error: GOOGLE_API_KEY / GEMINI_API_KEY is missing.")
@@ -170,8 +180,18 @@ def generate_chat_response(messages: List[Message]) -> ChatResponse:
                     detail="Both primary (Mistral) and fallback (Gemini) AI providers are currently unavailable. Please try again later.",
                 )
 
-            gemini_llm = ChatGoogleGenerativeAI(model=GEMINI_MODEL, google_api_key=google_key)
-            result = gemini_llm.invoke(langchain_messages)
+            gemini_llm = ChatGoogleGenerativeAI(
+                model=GEMINI_MODEL,
+                google_api_key=google_key,
+                timeout=settings.GEMINI_TIMEOUT_SECONDS,
+                max_retries=0,
+            )
+            result = execute_with_retry(
+                lambda: gemini_llm.invoke(langchain_messages),
+                policy=retry_policy,
+                is_retryable=is_transient_error,
+                operation_name="gemini_chat_fallback",
+            )
             text_content = extract_text_from_content(result.content)
             return ChatResponse(role="assistant", content=text_content, provider="gemini")
         except HTTPException as http_exc:
