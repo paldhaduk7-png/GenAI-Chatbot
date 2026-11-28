@@ -120,14 +120,28 @@ export const apiClient = axios.create({
 });
 
 /**
+ * Generates a unique request ID for frontend-to-backend request tracing.
+ */
+function generateRequestId(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `req-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+/**
  * Request Interceptor:
- * Attaches `Authorization: Bearer <token>` to all outgoing requests if a token exists.
+ * - Attaches `Authorization: Bearer <token>` to all outgoing requests if a token exists.
+ * - Attaches `X-Request-ID` for end-to-end request traceability.
  */
 apiClient.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
     const token = getAuthToken();
     if (token && !config.headers.Authorization) {
       config.headers.Authorization = `Bearer ${token}`;
+    }
+    if (!config.headers["X-Request-ID"]) {
+      config.headers["X-Request-ID"] = generateRequestId();
     }
     return config;
   },
@@ -138,11 +152,20 @@ apiClient.interceptors.request.use(
 
 /**
  * Response Interceptor:
- * Handles HTTP 401 Unauthorized responses without redirect loops or unintended retries.
+ * Handles HTTP 401 Unauthorized responses without redirect loops or unintended retries,
+ * and attaches backend X-Request-ID onto Axios errors for safe client-side debugging.
  */
 apiClient.interceptors.response.use(
   (response) => response,
   (error: AxiosError) => {
+    const responseReqId = error.response?.headers?.["x-request-id"];
+    const requestReqId = error.config?.headers?.["X-Request-ID"];
+    if (responseReqId || requestReqId) {
+      (error as AxiosError & { requestId?: string }).requestId = String(
+        responseReqId || requestReqId
+      );
+    }
+
     if (error.response?.status === 401) {
       const url = error.config?.url || "";
 

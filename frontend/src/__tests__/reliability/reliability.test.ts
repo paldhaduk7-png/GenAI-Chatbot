@@ -194,4 +194,18 @@ describe("Phase 6.5 Frontend Reliability & Error Handling", () => {
     expect(toast.error).toHaveBeenCalledWith("Document upload timed out. Please try again.", { id: "doc-upload" });
     expect(spyUpload).toHaveBeenCalledTimes(1);
   });
+
+  it("attaches X-Request-ID in request interceptor and preserves requestId on Axios error", async () => {
+    const reqHandler = (api.apiClient.interceptors.request as any).handlers[0].fulfilled;
+    const modifiedConfig = reqHandler({ headers: {} as any });
+    expect(modifiedConfig.headers["X-Request-ID"]).toBeTruthy();
+
+    const errHandler = (api.apiClient.interceptors.response as any).handlers[0].rejected;
+    const mockError: any = {
+      response: { status: 503, headers: { "x-request-id": "srv-req-999" } },
+      config: { url: "/api/chat", headers: { "X-Request-ID": "cli-req-111" } },
+    };
+    await expect(errHandler(mockError)).rejects.toBe(mockError);
+    expect(mockError.requestId).toBe("srv-req-999");
+  });
 });
