@@ -1,4 +1,5 @@
 import logging
+import time
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, status
 from fastapi.exception_handlers import (
@@ -11,17 +12,136 @@ from fastapi.responses import JSONResponse
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from app.config import DEFAULT_DEV_JWT_SECRET, settings
 from app.core.deps import limiter, rate_limit_exceeded_handler
-from app.db import Base, Conversation, Document, DocumentChunk, Message, engine
+from app.core.logging import (
+    REQUEST_ID_HEADER,
+    configure_logging,
+    reset_request_id,
+    set_request_id,
+    validate_or_generate_request_id,
+)
+from app.db import Base, Conversation, Document, DocumentChunk, Message as DbMessage, engine
 from app.routes.auth import router as auth_router
 from app.routes.chat import router as chat_router
 from app.routes.conversations import router as conversations_router
 from app.routes.documents import router as documents_router
 
+configure_logging(
+    environment=settings.ENVIRONMENT,
+    log_level=settings.LOG_LEVEL,
+    log_format=settings.LOG_FORMAT,
+)
 
 logger = logging.getLogger(__name__)
+
+
+class RequestContextMiddleware:
+    """
+    Pure ASGI middleware that assigns a validated or generated X-Request-ID
+    to each HTTP request, binds it to contextvars for request-scoped logging,
+    logs request lifecycle (start/completion/duration), and sets X-Request-ID
+    on every HTTP response (including errors).
+    """
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        # Extract incoming X-Request-ID header (case-insensitive)
+        incoming_id = None
+        for header_name, header_val in scope.get("headers", []):
+            if header_name.lower() == b"x-request-id":
+                try:
+                    incoming_id = header_val.decode("latin-1")
+                except Exception:
+                    incoming_id = None
+                break
+
+        request_id = validate_or_generate_request_id(incoming_id)
+        token = set_request_id(request_id)
+        start_time = time.perf_counter()
+
+        method = scope.get("method", "")
+        path = scope.get("path", "")  # Excludes query_string to avoid logging sensitive params
+        status_code = 500
+        unhandled_error = False
+
+        try:
+            logger.info(
+                "Request started: %s %s",
+                method,
+                path,
+                extra={"event": "request_started", "method": method, "path": path},
+            )
+        except Exception:
+            pass
+
+        async def send_with_request_id(message: Message) -> None:
+            nonlocal status_code
+            if message["type"] == "http.response.start":
+                status_code = message.get("status", 500)
+                raw_headers = [
+                    (k, v)
+                    for k, v in message.get("headers", [])
+                    if k.lower() != b"x-request-id"
+                ]
+                raw_headers.append((b"x-request-id", request_id.encode("ascii")))
+                message["headers"] = raw_headers
+            await send(message)
+
+        try:
+            await self.app(scope, receive, send_with_request_id)
+        except Exception:
+            unhandled_error = True
+            raise
+        finally:
+            duration_ms = round((time.perf_counter() - start_time) * 1000, 2)
+            try:
+                log_extra = {
+                    "event": "request_completed",
+                    "method": method,
+                    "path": path,
+                    "status_code": status_code,
+                    "duration_ms": duration_ms,
+                }
+                if unhandled_error or status_code >= 500:
+                    logger.error(
+                        "Request failed: %s %s -> %d (%.2fms)",
+                        method,
+                        path,
+                        status_code,
+                        duration_ms,
+                        extra=log_extra,
+                    )
+                elif status_code >= 400:
+                    logger.warning(
+                        "Request completed with client error: %s %s -> %d (%.2fms)",
+                        method,
+                        path,
+                        status_code,
+                        duration_ms,
+                        extra=log_extra,
+                    )
+                else:
+                    logger.info(
+                        "Request completed: %s %s -> %d (%.2fms)",
+                        method,
+                        path,
+                        status_code,
+                        duration_ms,
+                        extra=log_extra,
+                    )
+            except Exception:
+                pass
+            finally:
+                reset_request_id(token)
 
 
 @asynccontextmanager
@@ -84,8 +204,13 @@ app.add_middleware(
         "Accept",
         "Origin",
         "X-Requested-With",
+        REQUEST_ID_HEADER,
     ],
+    expose_headers=[REQUEST_ID_HEADER],
 )
+
+# Outermost middleware: binds X-Request-ID and logs request lifecycle
+app.add_middleware(RequestContextMiddleware)
 
 
 @app.exception_handler(Exception)

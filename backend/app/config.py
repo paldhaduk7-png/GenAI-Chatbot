@@ -20,8 +20,10 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # Application Environment
+    # Application Environment & Logging
     ENVIRONMENT: str = "development"
+    LOG_LEVEL: str = "INFO"
+    LOG_FORMAT: str = "auto"  # "auto" | "json" | "text"
 
     MISTRAL_API_KEY: str = ""
     GOOGLE_API_KEY: str = ""
