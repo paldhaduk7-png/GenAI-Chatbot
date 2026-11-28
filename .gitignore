@@ -25,6 +25,7 @@ venv.bak/
 htmlcov/
 backend/tests/
 tests/
+frontend/src/__tests__/
 
 # Node.js & Frontend (React)
 node_modules/
