@@ -26,6 +26,11 @@ htmlcov/
 backend/tests/
 tests/
 frontend/src/__tests__/
+frontend/vitest.config.mts
+frontend/vitest.setup.ts
+
+# Historical Phase Notes
+docs/PHASE*.md
 
 # Node.js & Frontend (React)
 node_modules/
