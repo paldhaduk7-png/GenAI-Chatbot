@@ -105,8 +105,17 @@ export function useDocuments() {
         let detail = "Failed to upload and process document.";
 
         if (axios.isAxiosError(err)) {
-          if (err.response?.status === 413) {
+          if (err.code === "ECONNABORTED" || err.code === "ETIMEDOUT") {
+            detail = "Document upload timed out. Please try again.";
+          } else if (!err.response) {
+            detail = "Network error while uploading document. Please check your connection.";
+          } else if (err.response.status === 413) {
             detail = "File exceeds maximum allowed upload size of 10 MB.";
+          } else if (err.response.status === 429) {
+            detail =
+              typeof err.response.data?.detail === "string"
+                ? err.response.data.detail
+                : "Too many upload requests. Please wait and try again.";
           } else if (err.response?.data?.detail) {
             detail =
               typeof err.response.data.detail === "string"

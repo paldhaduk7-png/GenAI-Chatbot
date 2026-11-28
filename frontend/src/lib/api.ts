@@ -101,17 +101,22 @@ export function setUnauthorizedHandler(handler: UnauthorizedHandler | null): voi
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 
+const parsedTimeout = Number(process.env.NEXT_PUBLIC_API_TIMEOUT_MS);
+const DEFAULT_API_TIMEOUT_MS =
+  Number.isFinite(parsedTimeout) && parsedTimeout > 0 ? parsedTimeout : 45000;
+
 /**
  * Pre-configured Axios instance for backend API communication.
  * - `baseURL`: Points to the FastAPI root.
- * - `timeout`: 45 seconds to accommodate LLM response generation and provider fallback.
+ * - `timeout`: 45 seconds by default (configurable via NEXT_PUBLIC_API_TIMEOUT_MS)
+ *   to accommodate LLM response generation, bounded retries, and provider fallback.
  */
 export const apiClient = axios.create({
   baseURL: API_BASE_URL,
   headers: {
     "Content-Type": "application/json",
   },
-  timeout: 45000,
+  timeout: DEFAULT_API_TIMEOUT_MS,
 });
 
 /**
@@ -345,6 +350,7 @@ export async function uploadDocument(file: File): Promise<DocumentUploadResponse
       headers: {
         "Content-Type": "multipart/form-data",
       },
+      timeout: Math.max(DEFAULT_API_TIMEOUT_MS, 90000),
     }
   );
   return response.data;

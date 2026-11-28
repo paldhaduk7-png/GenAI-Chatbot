@@ -356,21 +356,26 @@ export function useChat() {
           "Failed to communicate with the AI backend. Please verify the server is running.";
 
         if (axios.isAxiosError(err)) {
-          if (!err.response) {
-            userFriendlyError =
-              "Cannot connect to the backend server. Please verify that FastAPI is running on http://127.0.0.1:8000.";
-          } else if (err.code === "ECONNABORTED") {
+          if (err.code === "ECONNABORTED" || err.code === "ETIMEDOUT") {
             userFriendlyError =
               "The request timed out while waiting for the AI response. Please try again.";
+          } else if (!err.response) {
+            userFriendlyError =
+              "Cannot connect to the backend server. Please verify that FastAPI is running on http://127.0.0.1:8000.";
           } else {
             const status = err.response.status;
             const detail = err.response.data?.detail;
 
-            if (status === 503) {
+            if (status === 429) {
               userFriendlyError =
                 typeof detail === "string"
                   ? detail
-                  : "Both primary (Mistral) and fallback (Gemini) AI providers are currently unavailable. Please try again later.";
+                  : "Too many requests. Please wait a moment and try again.";
+            } else if (status === 502 || status === 503 || status === 504) {
+              userFriendlyError =
+                typeof detail === "string"
+                  ? detail
+                  : "AI providers or backend services are temporarily unavailable. Please try again later.";
             } else if (status === 500) {
               userFriendlyError =
                 typeof detail === "string" && !detail.includes("Traceback")
