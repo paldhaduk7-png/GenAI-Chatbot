@@ -107,6 +107,39 @@ class Settings(BaseSettings):
     RATE_LIMIT_DOCUMENT_UPLOAD: str = "20/minute"
     RATE_LIMIT_DOCUMENT_SEARCH: str = "60/minute"
 
+    # Reliability, Timeouts & Retry Policy (Phase 6.5)
+    LLM_MAX_RETRIES: int = 2
+    LLM_INITIAL_RETRY_DELAY: float = 0.5
+    LLM_MAX_RETRY_DELAY: float = 8.0
+    LLM_RETRY_JITTER: bool = True
+    MISTRAL_TIMEOUT_SECONDS: float = 30.0
+    GEMINI_TIMEOUT_SECONDS: float = 30.0
+
+    CLOUDINARY_TIMEOUT_SECONDS: float = 30.0
+    CLOUDINARY_MAX_RETRIES: int = 2
+
+    DB_CONNECT_TIMEOUT_SECONDS: int = 10
+    DB_STATEMENT_TIMEOUT_MS: int = 15000
+    DB_READ_MAX_RETRIES: int = 1
+
+    @model_validator(mode="after")
+    def validate_reliability_settings(self) -> "Settings":
+        if not (0 <= self.LLM_MAX_RETRIES <= 5):
+            raise ValueError("LLM_MAX_RETRIES must be between 0 and 5.")
+        if not (0 <= self.CLOUDINARY_MAX_RETRIES <= 5):
+            raise ValueError("CLOUDINARY_MAX_RETRIES must be between 0 and 5.")
+        if not (0 <= self.DB_READ_MAX_RETRIES <= 3):
+            raise ValueError("DB_READ_MAX_RETRIES must be between 0 and 3.")
+        if self.LLM_INITIAL_RETRY_DELAY < 0 or self.LLM_MAX_RETRY_DELAY < self.LLM_INITIAL_RETRY_DELAY:
+            raise ValueError("LLM_MAX_RETRY_DELAY must be >= LLM_INITIAL_RETRY_DELAY >= 0.")
+        if self.MISTRAL_TIMEOUT_SECONDS <= 0 or self.GEMINI_TIMEOUT_SECONDS <= 0:
+            raise ValueError("LLM timeouts must be greater than 0.")
+        if self.CLOUDINARY_TIMEOUT_SECONDS <= 0:
+            raise ValueError("CLOUDINARY_TIMEOUT_SECONDS must be greater than 0.")
+        if self.DB_CONNECT_TIMEOUT_SECONDS <= 0 or self.DB_STATEMENT_TIMEOUT_MS <= 0:
+            raise ValueError("Database timeout settings must be greater than 0.")
+        return self
+
     @property
     def cloudinary_cloud_name(self) -> str:
         return self.CLOUDINARY_CLOUD_NAME or self.CLOUD_NAME
