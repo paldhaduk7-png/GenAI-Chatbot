@@ -141,10 +141,23 @@ async def upload_document(
         # 7. Transition status to 'processing'
         document.status = "processing"
         db.commit()
+        logger.info(
+            "Document uploaded to storage; starting extraction.",
+            extra={"event": "document_storage_uploaded", "document_id": doc_id},
+        )
 
         # 8. Extract PDF text page-by-page
         try:
             extraction = extract_text_from_pdf(temp_path)
+            logger.info(
+                "PDF text extraction completed.",
+                extra={
+                    "event": "document_extraction_completed",
+                    "document_id": doc_id,
+                    "page_count": extraction["total_pages"],
+                    "pages_with_text": extraction["pages_with_text"],
+                },
+            )
         except (PDFExtractionError, Exception) as extract_exc:
             logger.exception("PDF text extraction failed for document %s: %s", doc_id, extract_exc)
             document.status = "failed"
@@ -176,6 +189,14 @@ async def upload_document(
             # Mark completed only after chunks and embeddings are persisted
             document.status = "completed"
             db.commit()
+            logger.info(
+                "Document processing completed.",
+                extra={
+                    "event": "document_processing_completed",
+                    "document_id": doc_id,
+                    "chunk_count": chunk_count,
+                },
+            )
 
         except Exception as proc_exc:
             logger.exception(

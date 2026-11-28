@@ -260,20 +260,65 @@ def execute_with_retry(
 
     for attempt in range(max_attempts):
         try:
-            return func()
+            result = func()
+            if attempt > 0:
+                logger.info(
+                    "%s succeeded on retry attempt %d/%d.",
+                    operation_name,
+                    attempt + 1,
+                    max_attempts,
+                    extra={
+                        "event": "retry_succeeded",
+                        "operation": operation_name,
+                        "attempt": attempt + 1,
+                        "max_attempts": max_attempts,
+                    },
+                )
+            return result
         except Exception as exc:
             is_last_attempt = attempt >= (max_attempts - 1)
-            if is_last_attempt or not is_retryable(exc):
+            retryable = is_retryable(exc)
+            reason = type(exc).__name__
+
+            if is_last_attempt or not retryable:
+                if is_last_attempt and attempt > 0 and retryable:
+                    logger.warning(
+                        "%s exhausted all %d attempts (%s).",
+                        operation_name,
+                        max_attempts,
+                        reason,
+                        extra={
+                            "event": "retry_exhausted",
+                            "operation": operation_name,
+                            "attempt": attempt + 1,
+                            "max_attempts": max_attempts,
+                            "reason": reason,
+                        },
+                    )
                 raise
 
+            retry_after_val = (
+                parse_retry_after(exc, policy.max_delay) if policy.respect_retry_after else None
+            )
+            retry_after_used = retry_after_val is not None
             delay = compute_retry_delay(attempt, policy, exc)
+
             logger.warning(
                 "%s failed transiently (%s) on attempt %d/%d; retrying in %.2fs.",
                 operation_name,
-                type(exc).__name__,
+                reason,
                 attempt + 1,
                 max_attempts,
                 delay,
+                extra={
+                    "event": "retry_scheduled",
+                    "operation": operation_name,
+                    "attempt": attempt + 1,
+                    "max_attempts": max_attempts,
+                    "reason": reason,
+                    "delay_s": round(delay, 3),
+                    "retry_after_used": retry_after_used,
+                },
             )
             if on_retry is not None:
                 on_retry(attempt, exc, delay)

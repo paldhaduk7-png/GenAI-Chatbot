@@ -99,7 +99,10 @@ def retrieve_context_and_sources(
     )
 
     if not retrieved_chunks:
-        logger.info("RAG retrieval returned 0 chunks for user %s.", user_id)
+        logger.info(
+            "RAG retrieval completed with 0 chunks.",
+            extra={"event": "rag_retrieval_completed", "chunk_count": 0},
+        )
         return {
             "context": "NO RELEVANT DOCUMENT CONTEXT FOUND.",
             "sources": [],
@@ -162,6 +165,10 @@ def retrieve_context_and_sources(
         context_blocks.append(f"{header}\n{chunk.content.strip()}")
 
     formatted_context = "\n\n".join(context_blocks)
+    logger.info(
+        "RAG retrieval completed.",
+        extra={"event": "rag_retrieval_completed", "chunk_count": len(sources)},
+    )
     return {
         "context": formatted_context,
         "sources": sources,

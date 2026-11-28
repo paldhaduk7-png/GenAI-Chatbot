@@ -124,6 +124,10 @@ def generate_chat_response(messages: List[Message]) -> ChatResponse:
     retry_policy = _build_llm_retry_policy()
 
     # 1. Primary provider: Mistral (SDK max_retries=0 to prevent overlapping duplicate retries)
+    logger.info(
+        "Dispatching chat request to primary LLM provider.",
+        extra={"event": "llm_request_started", "provider": "mistral"},
+    )
     try:
         mistral_llm = ChatMistralAI(
             model=MISTRAL_MODEL,
@@ -138,6 +142,10 @@ def generate_chat_response(messages: List[Message]) -> ChatResponse:
             operation_name="mistral_chat",
         )
         text_content = extract_text_from_content(result.content)
+        logger.info(
+            "Chat response generated successfully.",
+            extra={"event": "llm_success", "provider": "mistral"},
+        )
         return ChatResponse(role="assistant", content=text_content, provider="mistral")
 
     except Exception as primary_exc:
@@ -169,6 +177,11 @@ def generate_chat_response(messages: List[Message]) -> ChatResponse:
         logger.warning(
             "Primary provider (Mistral) failed (%s). Falling back to Gemini.",
             type(primary_exc).__name__,
+            extra={
+                "event": "llm_fallback",
+                "provider": "gemini",
+                "reason": type(primary_exc).__name__,
+            },
         )
 
         # 2. Fallback provider: Gemini (SDK max_retries=0 to prevent overlapping duplicate retries)
@@ -193,6 +206,10 @@ def generate_chat_response(messages: List[Message]) -> ChatResponse:
                 operation_name="gemini_chat_fallback",
             )
             text_content = extract_text_from_content(result.content)
+            logger.info(
+                "Chat response generated successfully via fallback provider.",
+                extra={"event": "llm_success", "provider": "gemini"},
+            )
             return ChatResponse(role="assistant", content=text_content, provider="gemini")
         except HTTPException as http_exc:
             raise http_exc
